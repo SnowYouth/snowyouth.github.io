@@ -1,0 +1,248 @@
+/* =========================================
+   Anthropic 风格覆盖 for Stellar — v2
+   ========================================= */
+
+@import url('https://fonts.googleapis.com/css2?family=Source+Serif+4:wght@400;500;600;700&display=swap');
+
+/* ---- 1. 主题变量 ---- */
+:root,
+html[data-theme='light'] {
+  --site-bg: #F0EEE6 !important;
+  --body-bg: #F0EEE6 !important;
+  --card-bg: #FAF9F3 !important;
+  --block-bg: #FAF9F3 !important;
+  --hover-bg: #E8E6DE !important;
+  --code-bg: #E8E6DE !important;
+
+  --text-p0: #191919 !important;
+  --text-p1: #191919 !important;
+  --text-p2: #3D3D3A !important;
+  --text-p3: #6B6B68 !important;
+  --text-meta: #6B6B68 !important;
+
+  --theme-color: #CC785C !important;
+  --color-primary: #CC785C !important;
+  --link-color: #CC785C !important;
+}
+
+/* ---- 2. 全局背景：暴力清空所有渐变 ---- */
+html, body {
+  background: #F0EEE6 !important;
+  background-image: none !important;
+  color: #191919;
+  font-family: 'Source Serif 4', 'Source Serif Pro', Georgia,
+               'Songti SC', 'STSong', '思源宋体', serif !important;
+}
+
+/* 干掉 body 上下的渐变光晕伪元素 */
+body::before, body::after,
+html::before, html::after {
+  display: none !important;
+  background: none !important;
+  background-image: none !important;
+  content: none !important;
+}
+
+/* 兜底：所有可能挂渐变的容器层 */
+#site-bg, .site-bg, #site_bg,
+.l_body, .l_main, .l_left, .l_right,
+main, .main, #main,
+.container, .wrapper {
+  background: #F0EEE6 !important;
+  background-image: none !important;
+}
+
+/* ---- 3. 卡片：去毛玻璃 / 去阴影 / 实色 ---- */
+.card, .block, .post-card, article, .item-card,
+.sidebar, #sidebar, .site-overview,
+.tabs, .tab-bar, .nav, .nav-tabs,
+[class*="card"], [class*="block"], [class*="panel"] {
+  box-shadow: none !important;
+  backdrop-filter: none !important;
+  -webkit-backdrop-filter: none !important;
+  background: #FAF9F3 !important;
+  background-image: none !important;
+  border-radius: 4px !important;
+  border: 1px solid #E8E6DE !important;
+}
+
+/* 顶部 tab 选中态保留一点辨识度 */
+.tabs .active, .tab-bar .active, [class*="tab"].active {
+  background: #E8E6DE !important;
+  color: #CC785C !important;
+}
+
+/* ---- 4. 标题 ---- */
+h1, h2, h3, h4, h5, h6, .title, .post-title, .site-title {
+  font-family: 'Source Serif 4', 'Source Serif Pro', Georgia,
+               'Songti SC', '思源宋体', serif !important;
+  font-weight: 600 !important;
+  color: #191919 !important;
+  word-break: keep-all;       /* 防止英文标题中间被硬塞空格 */
+  overflow-wrap: break-word;
+}
+
+/* ---- 5. 链接 ---- */
+a, a:visited {
+  color: #CC785C !important;
+  text-decoration: none;
+}
+a:hover {
+  color: #B05A3E !important;
+  text-decoration: underline;
+}
+
+/* ---- 6. 正文 ---- */
+.article-content, .post-content, .md, .markdown-body {
+  font-size: 17px;
+  line-height: 1.75;
+}
+
+/* ---- 7. 终极兜底：杀掉所有伪元素 + 装饰层 + 任何 fixed 渐变 ---- */
+*::before, *::after {
+  background-image: none !important;
+}
+
+/* Stellar 常见装饰层命名 */
+.bg, #bg, .background, .bg-decoration, .site-bg,
+.decoration, .blur, .blur-bg, .glow, .light,
+[class*="blur"], [class*="glow"], [class*="decor"], [class*="bg-"] {
+  display: none !important;
+  background: none !important;
+  background-image: none !important;
+  filter: none !important;
+}
+
+/* 任何 fixed/absolute 定位的装饰图层 */
+body > div[class*="bg"],
+body > div[style*="gradient"],
+body > div[style*="radial"] {
+  display: none !important;
+}
+
+/* 顺手把 h2/h3 前面那个蓝色 # = 装饰块也压淡 */
+h1::before, h2::before, h3::before, h4::before {
+  background: #E8E6DE !important;
+  color: #6B6B68 !important;
+}
+
+/* ---- 8. Stellar 侧边栏装饰背景：彻底杀掉 ---- */
+.sidebg,
+.l_left .sidebg,
+aside .sidebg {
+  display: none !important;
+  background: none !important;
+  background-image: none !important;
+  filter: none !important;
+  opacity: 0 !important;
+}
+
+/* 顺手把侧边栏自身设成纯色（万一 sidebg 是 z-index 在底下，移除后挂在 l_left 的渐变也会露出来） */
+.l_left, .l_right, aside.l_left, aside.l_right {
+  background: #F0EEE6 !important;
+  background-image: none !important;
+}
+
+/* ---- 9. 头像的彩虹占位图：去掉 ---- */
+.avatar .bg,
+.logo-wrap .avatar .bg,
+header.header .avatar .bg {
+  display: none !important;
+  background-image: none !important;
+}
+
+/* 头像本身如果加载失败显示的也是彩色 SVG，给它一个朴素的圆框兜底 */
+.logo-wrap .avatar img.error,
+.logo-wrap .avatar img[src="undefined"] {
+  display: none !important;
+}
+.logo-wrap .avatar {
+  background: #E8E6DE !important;
+  border: 1px solid #D9D7CF !important;
+}
+
+/* ---- 10. 标题前的 #/= 装饰小标签：从亮蓝改成暖米 ---- */
+h1::before, h2::before, h3::before, h4::before, h5::before, h6::before,
+.md-text h1::before, .md-text h2::before, .md-text h3::before,
+.md-text h4::before, .md-text h5::before, .md-text h6::before {
+  background: #E8E6DE !important;
+  background-color: #E8E6DE !important;
+  color: #6B6B68 !important;
+}
+
+/* 文章里链接式标题的小锚点（.headerlink）也压一下 */
+.headerlink {
+  color: #CC785C !important;
+  opacity: 0.6;
+}
+
+/* ---- 11. 代码块：换成暖米色 + 细边框 ---- */
+figure.highlight, .highlight, pre, code,
+figure.highlight table, figure.highlight pre {
+  background: #EEEBE0 !important;
+  background-color: #EEEBE0 !important;
+  border: 1px solid #E0DDD2 !important;
+  border-radius: 4px !important;
+  box-shadow: none !important;
+}
+
+/* 行内代码 */
+p code, li code, td code {
+  background: #E8E6DE !important;
+  color: #B05A3E !important;
+  padding: 1px 6px;
+  border-radius: 3px;
+  font-size: 0.92em;
+  border: none !important;
+}
+
+/* 代码块右上角 "bash" 语言标签：颜色压淡 */
+figure.highlight::before, .highlight::before,
+figure.highlight figcaption, .highlight figcaption {
+  color: #6B6B68 !important;
+}
+
+/* 行号列：底色保持但去掉冷调 */
+.gutter, .gutter pre {
+  background: #E8E6DE !important;
+  color: #9A9A95 !important;
+  border-right: 1px solid #D9D7CF !important;
+}
+
+/* ---- 12. 干掉标题前所有蓝色装饰（覆盖 headerlink + h::before 两种实现） ---- */
+
+/* 主犯：标题里的锚点链接本身和它的 ::before */
+.headerlink,
+.headerlink::before,
+.headerlink::after,
+h1 .headerlink, h2 .headerlink, h3 .headerlink,
+h4 .headerlink, h5 .headerlink, h6 .headerlink,
+article .headerlink, .md-text .headerlink {
+  display: none !important;
+  background: none !important;
+  background-color: transparent !important;
+  content: none !important;
+}
+
+/* 兜底：article 范围内任何带蓝色背景的伪元素 */
+article *::before, article *::after,
+.md-text *::before, .md-text *::after,
+.article-content *::before, .article-content *::after {
+  background-color: transparent !important;
+}
+
+/* 标题自己的 ::before 也一并隐藏（防止换了实现方式） */
+article h1::before, article h2::before, article h3::before,
+article h4::before, article h5::before, article h6::before,
+.md-text h1::before, .md-text h2::before, .md-text h3::before,
+.md-text h4::before, .md-text h5::before, .md-text h6::before {
+  display: none !important;
+  content: none !important;
+}
+
+/* 标题恢复顶格 */
+article h1, article h2, article h3, article h4, article h5, article h6,
+.md-text h1, .md-text h2, .md-text h3, .md-text h4, .md-text h5, .md-text h6 {
+  padding-left: 0 !important;
+  text-indent: 0 !important;
+}
