@@ -1,0 +1,1584 @@
+
+<!DOCTYPE html><html lang="zh-CN">
+
+<head>
+  <meta charset="utf-8">
+  <meta name="hexo-theme" content="https://github.com/xaoxuu/hexo-theme-stellar/tree/1.33.1" theme-name="Stellar" theme-version="1.33.1">
+  
+  
+  <meta name="generator" content="Hexo 8.1.2">
+  <meta http-equiv='x-dns-prefetch-control' content='on' />
+  
+  <meta name="renderer" content="webkit">
+  <meta name="force-rendering" content="webkit">
+  <meta http-equiv="X-UA-Compatible" content="IE=Edge,chrome=1">
+  <meta name="HandheldFriendly" content="True" >
+  <meta name="mobile-web-app-capable" content="yes">
+  <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1">
+  <meta name="theme-color" media="(prefers-color-scheme: dark)" content="#000">
+  <meta name="theme-color" content="#f9fafb">
+  <title>RAG 重排序 (Reranking) 实战指南 - 雪年手记 · SnowYouth Notes</title>
+
+  
+    <meta name="description" content="RAG 重排序 (Reranking) 实战指南 一份给所有正在做 RAG 的朋友看的、共同进步的策略对比手册。 本文聚焦一件事:粗排把候选拿回来之后,怎么再精排一刀,把真正相关的顶到前面。适合已经做过纯向量或 Hybrid 检索、想把召回的 top-k 真正用起来的工程师。   目录 前言:为什么”粗排够好了”不成立 第一部分:cross-encoder vs bi-encoder 1. bi-">
+<meta property="og:type" content="article">
+<meta property="og:title" content="RAG 重排序 (Reranking) 实战指南">
+<meta property="og:url" content="https://snowyouth.github.io/2026/06/25/RAG-%E9%87%8D%E6%8E%92%E5%BA%8F-Reranking-%E5%AE%9E%E6%88%98%E6%8C%87%E5%8D%97/">
+<meta property="og:site_name" content="雪年手记 · SnowYouth Notes">
+<meta property="og:description" content="RAG 重排序 (Reranking) 实战指南 一份给所有正在做 RAG 的朋友看的、共同进步的策略对比手册。 本文聚焦一件事:粗排把候选拿回来之后,怎么再精排一刀,把真正相关的顶到前面。适合已经做过纯向量或 Hybrid 检索、想把召回的 top-k 真正用起来的工程师。   目录 前言:为什么”粗排够好了”不成立 第一部分:cross-encoder vs bi-encoder 1. bi-">
+<meta property="og:locale" content="zh_CN">
+<meta property="article:published_time" content="2026-06-25T11:41:13.000Z">
+<meta property="article:modified_time" content="2026-06-25T11:43:05.197Z">
+<meta property="article:author" content="SnowYouth">
+<meta property="article:tag" content="LLM">
+<meta property="article:tag" content="Prompt Engineering">
+<meta name="twitter:card" content="summary">
+  
+  
+  
+  <meta name="keywords" content="LLM,Prompt Engineering">
+
+  <!-- feed -->
+  
+
+  <link rel="stylesheet" href="/css/main.css?v=1.33.1">
+
+
+  
+
+  
+
+  <script type="application/ld+json">{"@context":"https://schema.org","@type":"BlogPosting","author":{"@type":"Person","name":"SnowYouth","sameAs":[]},"dateCreated":"2026-06-25T19:41:13+08:00","dateModified":"2026-06-25T19:43:05+08:00","datePublished":"2026-06-25T19:41:13+08:00","description":"","headline":"RAG 重排序 (Reranking) 实战指南","mainEntityOfPage":{"@type":"WebPage","@id":"https://snowyouth.github.io/2026/06/25/RAG-%E9%87%8D%E6%8E%92%E5%BA%8F-Reranking-%E5%AE%9E%E6%88%98%E6%8C%87%E5%8D%97/"},"publisher":{"@type":"Organization","name":"SnowYouth","sameAs":[]},"url":"https://snowyouth.github.io/2026/06/25/RAG-%E9%87%8D%E6%8E%92%E5%BA%8F-Reranking-%E5%AE%9E%E6%88%98%E6%8C%87%E5%8D%97/","keywords":"LLM, Prompt Engineering","image":[]}</script>
+  <link rel="stylesheet" href="/css/custom.css">
+</head>
+<body>
+
+<div class="l_body content" id="start" layout="post" type="tech" ><aside class="l_left"><div class="sidebg"></div><div class="leftbar-container">
+
+
+<header class="header"><div class="logo-wrap"><a class="avatar" href="/about/"><div class="bg" style="opacity:0;background-image:url(https://gcore.jsdelivr.net/gh/cdn-x/placeholder@1.0.12/avatar/round/rainbow64@3x.webp);"></div><img no-lazy class="avatar" src="/avatar.jpg" onerror="javascript:this.classList.add('error');this.src='https://gcore.jsdelivr.net/gh/cdn-x/placeholder@1.0.12/image/2659360.svg';"></a><a class="title" href="/"><div class="main">雪年手记 · SnowYouth Notes</div></a></div></header>
+
+<div class="nav-area">
+
+<nav class="menu dis-select"></nav>
+</div>
+<div class="widgets">
+<div class="search-wrapper" id="search-wrapper"><form class="search-form"><a class="search-button" onclick="document.getElementById(&quot;search-input&quot;).focus();"><svg t="1705074644177" viewBox="0 0 1025 1024" version="1.1" xmlns="http://www.w3.org/2000/svg" p-id="1560" width="200" height="200"><path d="M1008.839137 935.96571L792.364903 719.491476a56.783488 56.783488 0 0 0-80.152866 0 358.53545 358.53545 0 1 1 100.857314-335.166073 362.840335 362.840335 0 0 1-3.689902 170.145468 51.248635 51.248635 0 1 0 99.217358 26.444296 462.057693 462.057693 0 1 0-158.255785 242.303546l185.930047 185.725053a51.248635 51.248635 0 0 0 72.568068 0 51.248635 51.248635 0 0 0 0-72.978056z" p-id="1561"></path><path d="M616.479587 615.969233a50.428657 50.428657 0 0 0-61.498362-5.534852 174.655348 174.655348 0 0 1-177.525271 3.484907 49.403684 49.403684 0 0 0-58.833433 6.76482l-3.074918 2.869923a49.403684 49.403684 0 0 0 8.609771 78.10292 277.767601 277.767601 0 0 0 286.992355-5.739847 49.403684 49.403684 0 0 0 8.404776-76.667958z" p-id="1562"></path></svg></a><input type="text" class="search-input" id="search-input" placeholder="站内搜索"></form><div id="search-result"></div><div class="search-no-result">没有找到内容！</div></div>
+
+
+
+<widget class="widget-wrapper recent post-list"><div class="widget-header dis-select"><span class="name">最近更新</span></div><div class="widget-body fs14"><a class="item title" href="/2026/06/25/RAG-%E9%87%8D%E6%8E%92%E5%BA%8F-Reranking-%E5%AE%9E%E6%88%98%E6%8C%87%E5%8D%97/"><span class="title">RAG 重排序 (Reranking) 实战指南</span></a><a class="item title" href="/2026/06/24/RAG-%E6%96%87%E6%A1%A3%E6%8B%86%E5%88%86%E4%B8%8E%E6%A3%80%E7%B4%A2%E7%AD%96%E7%95%A5-%C2%B7-%E5%AE%9E%E6%88%98%E6%8C%87%E5%8D%97/"><span class="title">RAG 文档拆分与检索策略 · 实战指南</span></a></div></widget>
+</div>
+
+</div></aside><div class="l_main" id="main">
+
+
+
+
+
+<div class="article banner top">
+  <div class="content">
+    <div class="top bread-nav footnote"><div class="left"><div class="flex-row" id="breadcrumb"><a class="cap breadcrumb" href="/">主页</a>
+<span class="sep"></span><a class="cap breadcrumb" href="/">文章</a><span class="sep"></span><a class="cap breadcrumb-link" href="/categories/Agent-RAG/">Agent. RAG.</a></div>
+<div class="flex-row" id="post-meta"><span class="text created">发布于：<time datetime="2026-06-25T11:41:13.000Z">2026-06-25</time></span><span class="sep updated"></span><span class="text updated">更新于：<time datetime="2026-06-25T11:43:05.197Z">2026-06-25</time></span></div></div></div>
+    
+    <div class="bottom only-title">
+      
+      <div class="text-area">
+        <h1 class="text title"><span>RAG 重排序 (Reranking) 实战指南</span></h1>
+        
+      </div>
+    </div>
+    
+  </div>
+  </div><article class="md-text content"><h1 id="RAG-重排序-Reranking-实战指南"><a href="#RAG-重排序-Reranking-实战指南" class="headerlink" title="RAG 重排序 (Reranking) 实战指南"></a>RAG 重排序 (Reranking) 实战指南</h1><blockquote>
+<p>一份给所有正在做 RAG 的朋友看的、共同进步的策略对比手册。</p>
+<p>本文聚焦一件事:<strong>粗排把候选拿回来之后,怎么再精排一刀,把真正相关的顶到前面。</strong><br>适合已经做过纯向量或 Hybrid 检索、想把召回的 top-k 真正用起来的工程师。</p>
+</blockquote>
+<hr>
+<h2 id="目录"><a href="#目录" class="headerlink" title="目录"></a>目录</h2><ul>
+<li><a href="#%E5%89%8D%E8%A8%80%E4%B8%BA%E4%BB%80%E4%B9%88%E7%B2%97%E6%8E%92%E5%A4%9F%E5%A5%BD%E4%BA%86%E4%B8%8D%E6%88%90%E7%AB%8B">前言:为什么”粗排够好了”不成立</a></li>
+<li><a href="#%E7%AC%AC%E4%B8%80%E9%83%A8%E5%88%86cross-encoder-vs-bi-encoder">第一部分:cross-encoder vs bi-encoder</a><ul>
+<li><a href="#1-bi-encoder-%E7%9A%84%E5%B7%A5%E4%BD%9C%E6%96%B9%E5%BC%8F">1. bi-encoder 的工作方式</a></li>
+<li><a href="#2-cross-encoder-%E7%9A%84%E5%B7%A5%E4%BD%9C%E6%96%B9%E5%BC%8F">2. cross-encoder 的工作方式</a></li>
+<li><a href="#3-%E4%B8%BA%E5%95%A5-cross-encoder-%E7%B2%BE%E5%BA%A6%E9%AB%98%E5%BB%B6%E8%BF%9F%E4%B9%9F%E9%AB%98">3. 为啥 cross-encoder 精度高、延迟也高</a></li>
+<li><a href="#4-%E5%8F%8C%E5%A1%94-vs-%E5%8D%95%E5%A1%94%E7%9A%84%E5%9B%BE%E7%A4%BA%E6%84%8F">4. 双塔 vs 单塔的图示意</a></li>
+</ul>
+</li>
+<li><a href="#%E7%AC%AC%E4%BA%8C%E9%83%A8%E5%88%86%E4%B8%BB%E6%B5%81-reranker-%E6%A8%A1%E5%9E%8B%E5%88%86%E7%B1%BB">第二部分:主流 reranker 模型分类</a><ul>
+<li><a href="#1-%E9%80%9A%E7%94%A8-cross-encoder">1. 通用 cross-encoder</a></li>
+<li><a href="#2-llm-as-reranker-llm-judge">2. LLM-as-reranker (LLM-judge)</a></li>
+<li><a href="#3-colbert--late-interaction">3. ColBERT &#x2F; Late Interaction</a></li>
+<li><a href="#4-lambdamart--gbdt-%E4%BC%A0%E7%BB%9F%E5%AD%A6%E4%B9%A0%E6%8E%92%E5%BA%8F">4. LambdaMART &#x2F; GBDT 传统学习排序</a></li>
+<li><a href="#5-%E9%80%89%E5%9E%8B%E5%AF%B9%E7%85%A7%E8%A1%A8">5. 选型对照表</a></li>
+</ul>
+</li>
+<li><a href="#%E7%AC%AC%E4%B8%89%E9%83%A8%E5%88%86%E5%B7%A5%E7%A8%8B%E4%B8%8A%E7%B2%97%E6%8E%92--%E7%B2%BE%E6%8E%92%E6%B5%81%E6%B0%B4%E7%BA%BF">第三部分:工程上”粗排 → 精排”流水线</a><ul>
+<li><a href="#1-%E4%B8%BA%E4%BB%80%E4%B9%88%E8%A6%81%E5%88%86%E9%98%B6%E6%AE%B5">1. 为什么要分阶段</a></li>
+<li><a href="#2-%E5%80%99%E9%80%89%E9%87%8F-n-%E6%80%8E%E4%B9%88%E5%AE%9A">2. 候选量 N 怎么定</a></li>
+<li><a href="#3-%E9%98%88%E5%80%BC-vs-top-k-%E6%88%AA%E6%96%AD%E7%9A%84%E5%8F%96%E8%88%8D">3. 阈值 vs top-k 截断的取舍</a></li>
+<li><a href="#4-%E5%A4%9A%E9%98%B6%E6%AE%B5-cascade">4. 多阶段 cascade</a></li>
+</ul>
+</li>
+<li><a href="#%E7%AC%AC%E5%9B%9B%E9%83%A8%E5%88%86%E6%8E%A8%E7%90%86%E6%80%A7%E8%83%BD%E4%B8%8E%E9%83%A8%E7%BD%B2">第四部分:推理性能与部署</a><ul>
+<li><a href="#1-cpu-%E5%8D%95%E6%9D%A1%E5%BB%B6%E8%BF%9F%E5%88%86%E5%B8%83">1. CPU 单条延迟分布</a></li>
+<li><a href="#2-batch-%E5%8C%96%E5%8A%A0%E9%80%9F">2. Batch 化加速</a></li>
+<li><a href="#3-gpu--%E9%87%8F%E5%8C%96">3. GPU &#x2F; 量化</a></li>
+<li><a href="#4-%E8%92%B8%E9%A6%8F%E5%88%B0-bi-encoder">4. 蒸馏到 bi-encoder</a></li>
+</ul>
+</li>
+<li><a href="#%E7%AC%AC%E4%BA%94%E9%83%A8%E5%88%86%E7%94%9F%E4%BA%A7%E7%9C%9F%E5%AE%9E%E5%81%9A%E6%B3%95-%E8%A7%84%E6%A8%A1--sla--%E6%88%90%E6%9C%AC">第五部分:生产真实做法 (规模 &#x2F; SLA &#x2F; 成本)</a><ul>
+<li><a href="#1-cohere-rerank-api">1. Cohere Rerank API</a></li>
+<li><a href="#2-vespa-native-reranking">2. Vespa native reranking</a></li>
+<li><a href="#3-pinecone-reranker">3. Pinecone reranker</a></li>
+<li><a href="#4-search-quality-eval-%E5%B7%A5%E5%85%B7">4. Search Quality Eval 工具</a></li>
+<li><a href="#5-%E5%A4%9A%E6%A0%B7%E6%80%A7-mmr-%E8%B7%9F-rerank-%E7%9A%84%E5%85%B3%E7%B3%BB">5. 多样性 (MMR) 跟 rerank 的关系</a></li>
+</ul>
+</li>
+<li><a href="#%E7%AC%AC%E5%85%AD%E9%83%A8%E5%88%86reranker-%E9%9B%86%E6%88%90%E7%9A%84%E5%B8%B8%E8%A7%81%E8%AF%AF%E5%8C%BA">第六部分:Reranker 集成的常见误区</a></li>
+<li><a href="#%E7%AC%AC%E4%B8%83%E9%83%A8%E5%88%86%E5%B0%8F%E5%9E%8B%E5%AE%9E%E7%8E%B0%E7%9A%84%E5%B8%B8%E8%A7%81%E5%9D%91--%E7%94%9F%E4%BA%A7%E5%AF%B9%E7%AD%96">第七部分:小型实现的常见坑 → 生产对策</a><ul>
+<li><a href="#71-%E5%B8%B8%E8%A7%81%E5%9D%91">7.1 常见坑</a></li>
+<li><a href="#72-%E7%94%9F%E4%BA%A7%E5%AF%B9%E7%AD%96--4-%E6%8B%9B%E5%BA%94%E5%AF%B9%E7%BB%9D%E5%AF%B9%E9%98%88%E5%80%BC%E5%A4%B1%E6%95%88">7.2 生产对策 — 4 招应对绝对阈值失效</a></li>
+<li><a href="#73-%E7%BB%BC%E5%90%88%E5%AF%B9%E7%85%A7%E8%A1%A8">7.3 综合对照表</a></li>
+</ul>
+</li>
+<li><a href="#%E7%AC%AC%E5%85%AB%E9%83%A8%E5%88%86%E8%A1%A5%E9%BD%90%E8%B7%AF%E7%BA%BF-%E6%8C%89-roi-%E6%8E%92%E5%BA%8F">第八部分:补齐路线 (按 ROI 排序)</a></li>
+<li><a href="#%E9%99%84%E5%BD%95-a%E6%9C%AF%E8%AF%AD%E5%B0%8F%E8%AF%8D%E5%85%B8">附录 A:术语小词典</a></li>
+<li><a href="#%E9%99%84%E5%BD%95-b%E8%BF%9B%E4%B8%80%E6%AD%A5%E9%98%85%E8%AF%BB">附录 B:进一步阅读</a></li>
+<li><a href="#%E5%86%99%E5%9C%A8%E6%9C%80%E5%90%8E">写在最后</a></li>
+</ul>
+<hr>
+<h2 id="前言-为什么”粗排够好了”不成立"><a href="#前言-为什么”粗排够好了”不成立" class="headerlink" title="前言:为什么”粗排够好了”不成立"></a>前言:为什么”粗排够好了”不成立</h2><p>如果你已经做完了 Hybrid 检索 (向量 + BM25 + RRF),top-10 看起来花花绿绿,正确答案大多数情况下也确实在里面,那你大概率会问一句:<strong>“够了吧,再加 reranker 是不是过度设计?”</strong></p>
+<p>通常,不够。原因藏在三件事里。</p>
+<p><strong>第一件事:向量召回 top-10 是”语义相近”,不是”真相关”。</strong> embedding 模型擅长把”主题接近”的文档拉到一起,但同一主题下的文档往往答的不是同一个问题。一个问”怎么配置参数”的 query,top-10 里可能塞着 “参数的历史背景”、”参数文档目录”、”参数模块的设计哲学”,真正讲”怎么配置”的那条排在第 7。从用户视角看,前 3 条全是废话。</p>
+<p><strong>第二件事:BM25 是”字面命中”,不是”答得对题”。</strong> 同一个 query 里的关键词出现得越多,BM25 分越高,但 “在哪个段落出现” 它不管。一篇综述里把所有关键词堆在一段,分数能压住真正在回答问题的那一篇专项文章。</p>
+<p><strong>第三件事:Hybrid (RRF) 是”两路都不偏”,但 top-1 经常被”半相关但流行的”占走。</strong> RRF 是把两路排名加权平均的”民主投票”,在两路都觉得这条 ok 但都不觉得它最好时,这条往往爬到 top-1。结果就是 “看起来都还行” 的中间地带占着前排,真正最优的那条被挤到第 4 第 5。</p>
+<p>cross-encoder 干的是另一件事——<strong>query × doc 联合判别</strong>。它不只看 query 里有什么、doc 里有什么,它看 “query 的每个 token 跟 doc 的每个 token 怎么对上”。同样的 doc,换个 query 就是不同的分,因为 attention 的注意力分布完全不同。这是 bi-encoder 这类”各自独立编码再算 cosine”的方案根本做不到的。</p>
+<p>举一个<strong>典型现象</strong>: 把 query 换个同义说法 (“怎么配置 X 参数” → “X 参数有哪些可选值”),纯向量召回里原本排 top-3 的那篇可能掉到 top-12,但 reranker 在 top-30 里能把它捞回 top-3。这就是行业公认的”reranker 救场”场景,跟具体语料无关。</p>
+<p>结论是:<strong>粗排负责把候选撒进网子,精排负责把鱼挑出来。</strong> 两步缺一不可,top-k 越大,这条规律越明显。</p>
+<hr>
+<h2 id="第一部分-cross-encoder-vs-bi-encoder"><a href="#第一部分-cross-encoder-vs-bi-encoder" class="headerlink" title="第一部分:cross-encoder vs bi-encoder"></a>第一部分:cross-encoder vs bi-encoder</h2><p>reranker 的精度差异来自模型架构。这一部分讲清楚 bi-encoder 和 cross-encoder 在做什么,以及为什么 cross-encoder 又准又慢。</p>
+<h3 id="1-bi-encoder-的工作方式"><a href="#1-bi-encoder-的工作方式" class="headerlink" title="1. bi-encoder 的工作方式"></a>1. bi-encoder 的工作方式</h3><p>bi-encoder 就是常说的”双塔模型”。query 和 doc 各自独立过一次模型,输出各自一个定长向量,再算 cosine 或 inner product 当相关度。</p>
+<figure class="highlight plaintext"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br></pre></td><td class="code"><pre><span class="line">query → [Encoder A] → vec_q</span><br><span class="line">doc   → [Encoder B] → vec_d        # 通常 Encoder A 和 B 共享权重</span><br><span class="line">score = cosine(vec_q, vec_d)</span><br></pre></td></tr></table></figure>
+
+<p>最大优势是 <strong>doc 向量可以离线算好</strong>。一千万篇文档,做 embedding 一次性写进 ANN 索引 (HNSW &#x2F; IVF),查询时只算一次 query 向量,毫秒级返回 top-k。整套流水线的 QPS 上限基本由 ANN 决定,而不是模型。</p>
+<p>最大短板是 <strong>query 和 doc 之间没有交互</strong>。模型在分别”独白” —— query 编码的时候不知道有哪些候选 doc,doc 编码的时候也不知道未来会被哪种 query 命中。两边的语义空间靠预训练数据共同分布对齐,这对齐质量直接决定 top-k 的精度上限。</p>
+<h3 id="2-cross-encoder-的工作方式"><a href="#2-cross-encoder-的工作方式" class="headerlink" title="2. cross-encoder 的工作方式"></a>2. cross-encoder 的工作方式</h3><p>cross-encoder 把 query 和 doc 拼成一段输入,一起过模型:</p>
+<figure class="highlight plaintext"><table><tr><td class="gutter"><pre><span class="line">1</span><br></pre></td><td class="code"><pre><span class="line">[CLS] query tokens [SEP] doc tokens [SEP] → [Transformer] → logit → sigmoid → score</span><br></pre></td></tr></table></figure>
+
+<p>注意力机制全开。query 的每个 token 都能”看到” doc 的每个 token,反过来也是。模型最终从 [CLS] 位置 (或别的池化方式) 拿一个标量 logit,通常 sigmoid 化压到 [0, 1] 当相关度分。</p>
+<p>这就是为什么 cross-encoder 能捕捉到 bi-encoder 永远抓不到的细节,比如:</p>
+<ul>
+<li><strong>否定与反义</strong>: “X is opposite of Y” 和 “X is the same as Y” 在 bi-encoder 看可能差不多 (主题词一样),cross-encoder 能区分。</li>
+<li><strong>数量关系</strong>: “至少 3 个” 和 “不超过 3 个” 字面像,语义反。cross-encoder 的 attention 能注意到 “至少” 和 “不超过” 跟 “3 个” 的搭配方式不同。</li>
+<li><strong>指代消解</strong>: “他” 指谁、”这个” 指什么,只有 query 和 doc 一起编码时才能解析对。</li>
+</ul>
+<h3 id="3-为啥-cross-encoder-精度高、延迟也高"><a href="#3-为啥-cross-encoder-精度高、延迟也高" class="headerlink" title="3. 为啥 cross-encoder 精度高、延迟也高"></a>3. 为啥 cross-encoder 精度高、延迟也高</h3><p>精度高的原因上一节讲过了,延迟高的原因更简单:<strong>不能预计算</strong>。</p>
+<p>每来一个 query,要把所有候选 doc 一条一条跟 query 拼起来,跑 N 遍 transformer 前向。N&#x3D;30 是入门,N&#x3D;1000 是大规模搜索。bi-encoder 那种 “doc 向量提前算好,查询只过一次模型” 的便宜没法占。</p>
+<p>量级感:</p>
+<ul>
+<li><strong>bi-encoder 单次查询</strong>: ANN 内部搜索 ~1 ms (HNSW), 加上 query embedding ~5-10 ms。整体毫秒级。</li>
+<li><strong>cross-encoder 单次重排 30 候选</strong>: CPU 上 50-500 ms (取决于模型大小、序列长度、是否 batch),GPU 上 10-50 ms。</li>
+</ul>
+<p>如果你正在做 50-100 ms SLA 的在线搜索,cross-encoder 上 30 候选基本是天花板,再多就要 GPU + batch + 量化一起上。</p>
+<h3 id="4-双塔-vs-单塔的图示意"><a href="#4-双塔-vs-单塔的图示意" class="headerlink" title="4. 双塔 vs 单塔的图示意"></a>4. 双塔 vs 单塔的图示意</h3><figure class="highlight plaintext"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br></pre></td><td class="code"><pre><span class="line">bi-encoder (双塔):                cross-encoder (单塔):</span><br><span class="line"></span><br><span class="line">  query        doc                  query ⊕ doc       ← ⊕ 是 [CLS] q [SEP] d [SEP]</span><br><span class="line">    │           │                       │</span><br><span class="line">    ▼           ▼                       ▼</span><br><span class="line">  ┌───┐       ┌───┐                 ┌─────────────┐</span><br><span class="line">  │enc│       │enc│  ← doc 可离线   │ Transformer │   ← 一次前向, 不能拆</span><br><span class="line">  └─┬─┘       └─┬─┘                 │ full attn   │</span><br><span class="line">    │vec_q     │vec_d               └──────┬──────┘</span><br><span class="line">    └─► cosine ◄┘                          │</span><br><span class="line">         │                                 ▼</span><br><span class="line">         ▼                          logit → sigmoid → score</span><br><span class="line">       score</span><br></pre></td></tr></table></figure>
+
+<p>直观上,双塔像两个人各自写答卷再交换比对,单塔像两个人坐一张桌子边讨论边写。后者效果好,但慢得多。</p>
+<hr>
+<h2 id="第二部分-主流-reranker-模型分类"><a href="#第二部分-主流-reranker-模型分类" class="headerlink" title="第二部分:主流 reranker 模型分类"></a>第二部分:主流 reranker 模型分类</h2><p>reranker 不是只有 cross-encoder 一种,只是它最常见。按技术路线分,大致是四类。</p>
+<h3 id="1-通用-cross-encoder"><a href="#1-通用-cross-encoder" class="headerlink" title="1. 通用 cross-encoder"></a>1. 通用 cross-encoder</h3><p>最主流的一类,生态最全,文档最多,99% 的 RAG 项目选的就是这个。</p>
+<ul>
+<li><strong>代表模型</strong>: BAAI 的 bge-reranker 系列 (base &#x2F; large &#x2F; v2-m3) &#x2F; Jina 的 jina-reranker 系列 &#x2F; Cohere Rerank (闭源 API) &#x2F; mxbai-rerank</li>
+<li><strong>体积区间</strong>: 小的 200M 参数 (bge-reranker-base &#x2F; ms-marco-MiniLM), 大的 2B+ (bge-reranker-v2-m3, Cohere Rerank-3 据传更大)</li>
+<li><strong>训练数据</strong>: 通常是 XLM-RoBERTa 或 mBERT 基底,在 MS MARCO + 多语种检索对数据上 fine-tune</li>
+<li><strong>选型经验</strong>:<ul>
+<li>中文 &#x2F; 多语种场景,默认 bge-reranker-v2-m3 (开源,中文表现是公开数据集第一档) 或 Cohere multilingual (闭源,要钱)</li>
+<li>英文场景,轻量选 ms-marco-MiniLM-L-6-v2,顶配选 Cohere Rerank-3 或 bge-reranker-large</li>
+<li>日韩等少数语种,先看 jina-reranker 的语种支持列表,实在没有就 bge-reranker-v2-m3 兜底</li>
+</ul>
+</li>
+</ul>
+<h3 id="2-LLM-as-reranker-LLM-judge"><a href="#2-LLM-as-reranker-LLM-judge" class="headerlink" title="2. LLM-as-reranker (LLM-judge)"></a>2. LLM-as-reranker (LLM-judge)</h3><p>直接用通用大模型当 reranker。</p>
+<ul>
+<li><strong>接口形态</strong>: 给 LLM 一个 query 和候选列表,通过 prompt 让它输出每条的相关度分 (0-1 浮点 &#x2F; {高,中,低} 分类 &#x2F; 0-100 整数都有人用)</li>
+<li><strong>代表实现</strong>: GPT-4 &#x2F; Claude &#x2F; 开源 Llama 3 70B 配合 few-shot prompt; LlamaIndex 的 <code>LLMRerank</code>;Cohere v3 据传内部混合了 LLM-judge 思路</li>
+<li><strong>优点</strong>:<ul>
+<li>精度可以非常高 (相当于一个 reasoning 模型在做相关度评估)</li>
+<li>能自然解释 “为啥这条相关” (让 LLM 顺手输出理由)</li>
+<li>不需要训练,prompt 就能用</li>
+</ul>
+</li>
+<li><strong>缺点</strong>:<ul>
+<li>慢, 秒级延迟, 上线难</li>
+<li>贵, 按 token 计费, 单次 rerank 几分钱起步</li>
+<li>输出不稳定,需要严格的 prompt 工程加 schema 校验</li>
+</ul>
+</li>
+<li><strong>工业用法</strong>:<ul>
+<li><strong>离线生成训练数据</strong>: 用 LLM 标 100 万 (query, doc) 对,蒸馏给 cross-encoder</li>
+<li><strong>二级 rerank</strong>: cross-encoder 把 30 → 5,LLM-judge 再 5 → 3, 延迟摊得开</li>
+<li><strong>A&#x2F;B 评估</strong>: LLM-judge 当 ground truth, 算 NDCG&#x2F;MRR</li>
+</ul>
+</li>
+</ul>
+<h3 id="3-ColBERT-Late-Interaction"><a href="#3-ColBERT-Late-Interaction" class="headerlink" title="3. ColBERT &#x2F; Late Interaction"></a>3. ColBERT &#x2F; Late Interaction</h3><p>介于 bi-encoder 和 cross-encoder 之间的中间形态。</p>
+<ul>
+<li><strong>代表</strong>: ColBERT v1 (Khattab &amp; Zaharia, 2020), ColBERT v2 (压缩版), ColPali (多模态版,query 是文本,doc 是图)</li>
+<li><strong>核心思路</strong>: 像 bi-encoder 一样各自编码,但<strong>输出的不是单个向量,而是每个 token 一个向量</strong>。检索时算 query 每个 token 跟 doc 所有 token 的 max-sim,再把所有 query token 的 max-sim 加起来。</li>
+<li><strong>优点</strong>:<ul>
+<li>比 cross-encoder 快 (不用每对都重跑 transformer)</li>
+<li>比 bi-encoder 准 (有 token 级交互)</li>
+<li>可以做”候选预筛 + 精排”一体化 (PLAID 等专用索引)</li>
+</ul>
+</li>
+<li><strong>缺点</strong>:<ul>
+<li><strong>存储量爆炸</strong>: 每个文档存 N 个向量 (N &#x3D; doc token 数), 索引大小是 bi-encoder 的 5-10 倍, 1 千万文档级别后维护成本非常高</li>
+<li>生态比 cross-encoder 窄,工具支持不如 sentence-transformers</li>
+</ul>
+</li>
+<li><strong>适用</strong>: 中等规模 (百万到千万 doc)、对延迟敏感、能接受更高存储成本的搜索系统</li>
+</ul>
+<h3 id="4-LambdaMART-GBDT-传统学习排序"><a href="#4-LambdaMART-GBDT-传统学习排序" class="headerlink" title="4. LambdaMART &#x2F; GBDT 传统学习排序"></a>4. LambdaMART &#x2F; GBDT 传统学习排序</h3><p>工业搜索&#x2F;推荐系统的主力,<strong>RAG 圈讲得少但工业用得最广</strong>。</p>
+<ul>
+<li><strong>代表</strong>: LightGBM &#x2F; XGBoost 的 ranker 模式 (objective&#x3D;rank:pairwise &#x2F; lambdarank), Vespa 的 native ranking, 各家自研 GBDT</li>
+<li><strong>核心思路</strong>: 把多路检索分数 (BM25 &#x2F; vector cosine &#x2F; freshness &#x2F; click-through rate &#x2F; domain authority &#x2F; 用户特征 &#x2F; 上下文特征) 当特征,用 pairwise 或 listwise 损失训一个 GBDT 模型当 reranker。</li>
+<li><strong>优点</strong>:<ul>
+<li><strong>可解释</strong>: 每个特征的贡献透明 (SHAP 一拉就清),问题好排查</li>
+<li><strong>快</strong>: 一次预测毫秒级,QPS 上限极高</li>
+<li><strong>工业沉淀深</strong>: Yahoo &#x2F; 微软 &#x2F; 阿里 &#x2F; 字节都在用,内部最佳实践成熟</li>
+</ul>
+</li>
+<li><strong>缺点</strong>:<ul>
+<li>需要监督信号 (点击日志或人工标注),冷启动慢</li>
+<li>表达力弱于深度学习,语义不如 cross-encoder 抓得细</li>
+</ul>
+</li>
+<li><strong>工业用法</strong>: 推荐系统 &#x2F; 广告排序 &#x2F; 商品搜索的 L1 二排主力,离线 batch rerank 仍是首选</li>
+</ul>
+<h3 id="5-选型对照表"><a href="#5-选型对照表" class="headerlink" title="5. 选型对照表"></a>5. 选型对照表</h3><table>
+<thead>
+<tr>
+<th>类型</th>
+<th>精度</th>
+<th>单次延迟</th>
+<th>训练成本</th>
+<th>部署难度</th>
+<th>适合场景</th>
+</tr>
+</thead>
+<tbody><tr>
+<td>通用 cross-encoder</td>
+<td>高</td>
+<td>中 (50-500ms&#x2F;30 候选)</td>
+<td>低 (拿现成的)</td>
+<td>低 (一行调用)</td>
+<td>通用 RAG 精排首选</td>
+</tr>
+<tr>
+<td>LLM-as-reranker</td>
+<td>极高</td>
+<td>极慢 (秒级)</td>
+<td>0 (用 API) &#x2F; 高 (自训)</td>
+<td>中 (API) &#x2F; 高 (自部署)</td>
+<td>离线评估 &#x2F; 高价值场景</td>
+</tr>
+<tr>
+<td>ColBERT</td>
+<td>高</td>
+<td>中 (比 cross-encoder 快)</td>
+<td>中</td>
+<td>高 (存储成本高)</td>
+<td>大语料 + 中等 QPS</td>
+</tr>
+<tr>
+<td>LambdaMART</td>
+<td>中-高</td>
+<td>极快 (μs 级)</td>
+<td>中 (要训,要标注)</td>
+<td>低</td>
+<td>多信号融合,业务排序</td>
+</tr>
+</tbody></table>
+<p>入门最稳的路: <strong>通用 cross-encoder 起步, 数据攒够后蒸馏个轻量版 bi-encoder 或上 LambdaMART 做 L1, LLM-as-reranker 留给离线评估</strong>。</p>
+<hr>
+<h2 id="第三部分-工程上”粗排-→-精排”流水线"><a href="#第三部分-工程上”粗排-→-精排”流水线" class="headerlink" title="第三部分:工程上”粗排 → 精排”流水线"></a>第三部分:工程上”粗排 → 精排”流水线</h2><p>reranker 不能单独存在,它必须跟粗排配合成一条流水线。这一节讲分阶段、候选量、阈值三个关键设计点。</p>
+<h3 id="1-为什么要分阶段"><a href="#1-为什么要分阶段" class="headerlink" title="1. 为什么要分阶段"></a>1. 为什么要分阶段</h3><p>直觉上 “为啥不直接 cross-encoder 全打分”? 因为算不过来。如果你有 100 万 doc,每个 query 都让 cross-encoder 跑 100 万次前向,单 query 几分钟,直接劝退。</p>
+<p>所以工业上是 cascade:</p>
+<table>
+<thead>
+<tr>
+<th>阶段</th>
+<th>名称</th>
+<th>输入候选</th>
+<th>输出候选</th>
+<th>关注指标</th>
+<th>典型模型</th>
+</tr>
+</thead>
+<tbody><tr>
+<td>L0</td>
+<td>粗排 (Retrieval)</td>
+<td>全量 doc</td>
+<td>1000</td>
+<td><strong>召回率 (Recall)</strong></td>
+<td>向量 + BM25 + RRF</td>
+</tr>
+<tr>
+<td>L1</td>
+<td>二排 (First-stage rerank)</td>
+<td>1000</td>
+<td>100</td>
+<td>精度 + 召回兼顾</td>
+<td>LambdaMART &#x2F; GBDT &#x2F; 轻量 cross-encoder</td>
+</tr>
+<tr>
+<td>L2</td>
+<td>精排 (Final rerank)</td>
+<td>100</td>
+<td>10</td>
+<td><strong>精度 (Precision)</strong></td>
+<td>大 cross-encoder</td>
+</tr>
+<tr>
+<td>L3</td>
+<td>终排 (Business rules)</td>
+<td>10</td>
+<td>3-5</td>
+<td>用户体验</td>
+<td>多样性 &#x2F; 新鲜度 &#x2F; 个性化规则 &#x2F; LLM</td>
+</tr>
+</tbody></table>
+<p>每一层都比上一层准、比上一层慢、比上一层候选少。这就是”漏斗”模型。</p>
+<p>入门项目通常合并到两层 (L0 + L2),把 L1 和 L3 省了。够用,但天花板低。</p>
+<h3 id="2-候选量-N-怎么定"><a href="#2-候选量-N-怎么定" class="headerlink" title="2. 候选量 N 怎么定"></a>2. 候选量 N 怎么定</h3><p>cross-encoder 重排的候选量 N 是关键参数,直接决定延迟。</p>
+<ul>
+<li><strong>N &#x3D; 30</strong>: 入门首选, CPU 单次 &lt; 1s, 大多数 demo &#x2F; 学习项目用这个</li>
+<li><strong>N &#x3D; 100</strong>: 中等规模生产, 适合有 GPU 的服务, 延迟在 100-300 ms</li>
+<li><strong>N &#x3D; 1000+</strong>: 大规模搜索 (Bing &#x2F; Google 级别), 必须 batch 化 + GPU 并行 + 多机分片</li>
+</ul>
+<p>定 N 的两条经验法则:</p>
+<ol>
+<li><strong>召回率拐点法</strong>: 在评测集上画 Recall@N 曲线,找曲线变平的点。如果 Recall@30 &#x3D; 0.85, Recall@100 &#x3D; 0.86, Recall@1000 &#x3D; 0.86, 那 N&#x3D;30 就够,加大 N 只是增加噪音让 reranker 更累。</li>
+<li><strong>延迟预算法</strong>: 把端到端 SLA 减去其它环节 (粗排 &#x2F; LLM 生成 &#x2F; 网络),剩下的留给 rerank,反推 N。</li>
+</ol>
+<h3 id="3-阈值-vs-top-k-截断的取舍"><a href="#3-阈值-vs-top-k-截断的取舍" class="headerlink" title="3. 阈值 vs top-k 截断的取舍"></a>3. 阈值 vs top-k 截断的取舍</h3><p>reranker 打完分,怎么决定哪些返回给下游? 三种主流策略,各有取舍。</p>
+<table>
+<thead>
+<tr>
+<th>策略</th>
+<th>做法</th>
+<th>优点</th>
+<th>缺点</th>
+</tr>
+</thead>
+<tbody><tr>
+<td>top-k 截断</td>
+<td>永远返回前 k 条</td>
+<td>简单, 实现一行</td>
+<td>没召回信号, query 不命中也返回 k 条</td>
+</tr>
+<tr>
+<td>绝对阈值</td>
+<td>分数 &lt; T 的扔掉</td>
+<td>有 “不命中” 信号</td>
+<td>依赖分数标定 (后面专讲, 这是大坑)</td>
+</tr>
+<tr>
+<td>相对阈值</td>
+<td>top1&#x2F;mean(top5) ≥ R</td>
+<td>不依赖绝对分数</td>
+<td>调参从 T 换成 R, 仍要小规模实测</td>
+</tr>
+<tr>
+<td>混合</td>
+<td>top-k 截断 + 兜底阈值</td>
+<td>兼顾两者</td>
+<td>调参多一个</td>
+</tr>
+</tbody></table>
+<p><strong>生产里最常见的是混合</strong>: 最多返回 k 条,但分数明显偏低的过滤掉。这样既不会无脑塞满 k 条,也不会因为阈值太严返回空。</p>
+<h3 id="4-多阶段-cascade"><a href="#4-多阶段-cascade" class="headerlink" title="4. 多阶段 cascade"></a>4. 多阶段 cascade</h3><p>把上面的几件事拼起来,是一个典型工业搜索引擎的样子 (这里用搜索引擎口径,不是任何特定项目的):</p>
+<figure class="highlight plaintext"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br><span class="line">15</span><br><span class="line">16</span><br><span class="line">17</span><br><span class="line">18</span><br><span class="line">19</span><br><span class="line">20</span><br><span class="line">21</span><br><span class="line">22</span><br></pre></td><td class="code"><pre><span class="line">        ┌─────────────────┐</span><br><span class="line">query → │  L0: 倒排 + ANN │ → 1000 候选</span><br><span class="line">        │  粗排, 召回为主 │</span><br><span class="line">        └─────────────────┘</span><br><span class="line">                 │</span><br><span class="line">                 ▼</span><br><span class="line">        ┌─────────────────┐</span><br><span class="line">        │  L1: LambdaMART │ → 100 候选</span><br><span class="line">        │  多信号融合二排 │</span><br><span class="line">        └─────────────────┘</span><br><span class="line">                 │</span><br><span class="line">                 ▼</span><br><span class="line">        ┌─────────────────┐</span><br><span class="line">        │ L2: cross-encoder│ → 10 候选</span><br><span class="line">        │ 精排, 精度为主  │</span><br><span class="line">        └─────────────────┘</span><br><span class="line">                 │</span><br><span class="line">                 ▼</span><br><span class="line">        ┌─────────────────┐</span><br><span class="line">        │  L3: 业务规则   │ → 3-5 给用户</span><br><span class="line">        │  多样性 / LLM   │</span><br><span class="line">        └─────────────────┘</span><br></pre></td></tr></table></figure>
+
+<p>学习项目能跑到 L0 + L2 就已经及格,跑到 L0 + L1 + L2 算优秀。L3 是产品力,跟 reranker 关系不大。</p>
+<hr>
+<h2 id="第四部分-推理性能与部署"><a href="#第四部分-推理性能与部署" class="headerlink" title="第四部分:推理性能与部署"></a>第四部分:推理性能与部署</h2><p>cross-encoder 的延迟是个绕不开的话题。这一节讲 CPU&#x2F;GPU 上的实测分布,以及加速的三板斧:batch、量化、蒸馏。</p>
+<h3 id="1-CPU-单条延迟分布"><a href="#1-CPU-单条延迟分布" class="headerlink" title="1. CPU 单条延迟分布"></a>1. CPU 单条延迟分布</h3><p>经验数据 (单线程 CPU, AVX2, FP32, 序列长度 256):</p>
+<table>
+<thead>
+<tr>
+<th>模型</th>
+<th>参数量</th>
+<th>单条 (q, d) 延迟</th>
+<th>30 候选总时长 (单条循环)</th>
+</tr>
+</thead>
+<tbody><tr>
+<td>ms-marco-MiniLM-L-6-v2</td>
+<td>~22M</td>
+<td>5-10 ms</td>
+<td>150-300 ms</td>
+</tr>
+<tr>
+<td>bge-reranker-base</td>
+<td>~280M</td>
+<td>15-30 ms</td>
+<td>450-900 ms</td>
+</tr>
+<tr>
+<td>jina-reranker-v2-base</td>
+<td>~280M</td>
+<td>15-30 ms</td>
+<td>450-900 ms</td>
+</tr>
+<tr>
+<td>bge-reranker-large</td>
+<td>~560M</td>
+<td>30-60 ms</td>
+<td>900-1800 ms</td>
+</tr>
+<tr>
+<td>bge-reranker-v2-m3</td>
+<td>~570M</td>
+<td>30-80 ms</td>
+<td>900-2400 ms</td>
+</tr>
+</tbody></table>
+<p>经验法则: <strong>30 候选 CPU 跑超过 1.5 s,就要考虑批量优化 &#x2F; GPU &#x2F; 量化了</strong>。</p>
+<p>入门项目不要被这数字吓住——多数 demo 场景一次问答 1-2 秒延迟用户能接受,reranker 占大头不是问题。但生产上线必须算清楚这笔账。</p>
+<h3 id="2-Batch-化加速"><a href="#2-Batch-化加速" class="headerlink" title="2. Batch 化加速"></a>2. Batch 化加速</h3><p>把 (query, doc) pair 打成 batch 一起前传,比逐条调快 3-10x。</p>
+<figure class="highlight python"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br></pre></td><td class="code"><pre><span class="line"><span class="comment"># 反例 (慢)</span></span><br><span class="line">scores = []</span><br><span class="line"><span class="keyword">for</span> doc <span class="keyword">in</span> candidates:</span><br><span class="line">    scores.append(model.predict([(query, doc)]))</span><br><span class="line"></span><br><span class="line"><span class="comment"># 正例 (快)</span></span><br><span class="line">pairs = [(query, doc) <span class="keyword">for</span> doc <span class="keyword">in</span> candidates]</span><br><span class="line">scores = model.predict(pairs, batch_size=<span class="number">32</span>)</span><br></pre></td></tr></table></figure>
+
+<p>注意点:</p>
+<ul>
+<li><strong>batch_size 太大爆显存,太小没收益</strong>。16-32 是 CPU&#x2F;小 GPU 的经验区间,大 GPU 上 64-128</li>
+<li><strong>batch 内序列长度不一致时, padding 会浪费算力</strong>。按 doc 长度排序后再 batch,padding 损耗能降一半</li>
+<li><strong>库内部通常已经做了 batch</strong>, 比如 sentence-transformers 的 <code>model.predict(pairs)</code> 默认会按 batch_size 切。自己写 pipeline 时别忘了</li>
+</ul>
+<h3 id="3-GPU-量化"><a href="#3-GPU-量化" class="headerlink" title="3. GPU &#x2F; 量化"></a>3. GPU &#x2F; 量化</h3><p>GPU 上 cross-encoder 飞起来:</p>
+<ul>
+<li><strong>FP16 (半精度)</strong>: 显存减半, 速度快 1.5-2x, 精度几乎无损。主流 reranker 库默认支持。</li>
+<li><strong>BF16 (脑浮点)</strong>: Ampere 及以上 NVIDIA GPU 才支持, 数值范围比 FP16 大, 训练更稳定, 推理速度跟 FP16 差不多</li>
+<li><strong>INT8 (8 位整数量化)</strong>: 显存 1&#x2F;4, 速度快 2-4x, 精度有小损失 (NDCG 通常掉 0.5-2%)。适合大 batch 场景</li>
+<li><strong>INT4</strong>: 极致压缩, 适合边缘设备, 精度损失明显, RAG 用得少</li>
+</ul>
+<p>工具链:</p>
+<ul>
+<li><strong>ONNX Runtime</strong>: 跨平台, CPU&#x2F;GPU 都支持, 转换简单</li>
+<li><strong>TensorRT</strong>: NVIDIA 专用, 优化最激进, 配置复杂</li>
+<li><strong>HuggingFace Optimum</strong>: 包装了 ONNX Runtime 和 TensorRT, sentence-transformers 转 ONNX 一行命令</li>
+<li><strong>OpenVINO</strong>: Intel CPU 专用, AVX-512 收益明显</li>
+</ul>
+<h3 id="4-蒸馏到-bi-encoder"><a href="#4-蒸馏到-bi-encoder" class="headerlink" title="4. 蒸馏到 bi-encoder"></a>4. 蒸馏到 bi-encoder</h3><p>如果实在受不了 cross-encoder 的延迟,可以走”知识蒸馏”:</p>
+<figure class="highlight plaintext"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br></pre></td><td class="code"><pre><span class="line">[cross-encoder]    用 (query, doc) → score 标 100 万对训练数据</span><br><span class="line">       │</span><br><span class="line">       │  老师教学生</span><br><span class="line">       ▼</span><br><span class="line">[bi-encoder]       学生学着复现老师的相关度判断</span><br></pre></td></tr></table></figure>
+
+<p>学生 (bi-encoder) 推理快, 但精度趋近 cross-encoder 上限的 80-90%。代表案例: ms-marco-MiniLM-L-6-v2 这种小 bi-encoder 就是这么训出来的,精度比直接训的 bi-encoder 高一截。</p>
+<p>适合的场景: 流量大、SLA 紧、有标注预算或愿意用 LLM 当 labeler 的团队。</p>
+<hr>
+<h2 id="第五部分-生产真实做法-规模-SLA-成本"><a href="#第五部分-生产真实做法-规模-SLA-成本" class="headerlink" title="第五部分:生产真实做法 (规模 &#x2F; SLA &#x2F; 成本)"></a>第五部分:生产真实做法 (规模 &#x2F; SLA &#x2F; 成本)</h2><p>这一节讲工业代表方案,不绑定任何具体项目身份。看完后心里大致有数 “如果有一天要扛真流量, 应该长什么样”。</p>
+<h3 id="1-Cohere-Rerank-API"><a href="#1-Cohere-Rerank-API" class="headerlink" title="1. Cohere Rerank API"></a>1. Cohere Rerank API</h3><p>服务化的 reranker, 不自部署。</p>
+<ul>
+<li><strong>定价</strong>: 按 query 收费, $2&#x2F;1000 search units (一次最多 100 候选), 算下来一次 rerank 几毫钱</li>
+<li><strong>延迟</strong>: 单次 ≤ 100 ms (云端 GPU + 网络往返)</li>
+<li><strong>模型</strong>: 多语种 v3, 中英日韩西法德都支持</li>
+<li><strong>优点</strong>: 免运维, 模型升级跟着 Cohere 走, SDK 一行调用</li>
+<li><strong>缺点</strong>: 数据出境 (中国用户合规问题), 长期成本不低, 模型选择有限</li>
+</ul>
+<p>适合<strong>不想自部署的中小生产</strong>。</p>
+<h3 id="2-Vespa-native-reranking"><a href="#2-Vespa-native-reranking" class="headerlink" title="2. Vespa native reranking"></a>2. Vespa native reranking</h3><p>Vespa 是 Yahoo 开源的搜索引擎, 把粗排、二排、精排、业务排序全做在一个引擎里。</p>
+<ul>
+<li><strong>核心</strong>: 在 <code>rank-profile</code> 里写表达式 <code>bm25(content) * 0.3 + closeness(&quot;embedding&quot;) * 0.4 + cross_encoder_score * 0.3</code></li>
+<li><strong>优点</strong>: 单引擎多阶段 cascade, 状态自洽, 不用维护多个服务之间的数据一致性</li>
+<li><strong>缺点</strong>: 学习曲线陡, 文档密度大, 中文社区资料少, 团队上手成本高</li>
+</ul>
+<p>适合<strong>愿意投入引擎专业度、长期吃工业级流量</strong>的团队。</p>
+<h3 id="3-Pinecone-reranker"><a href="#3-Pinecone-reranker" class="headerlink" title="3. Pinecone reranker"></a>3. Pinecone reranker</h3><p>Pinecone 是托管向量库, 最近几年加了 rerank 功能, 跟向量库一体。</p>
+<ul>
+<li><strong>接口</strong>: <code>index.query(vector=..., rerank=True, rerank_model=&quot;bge-reranker-v2-m3&quot;)</code></li>
+<li><strong>优点</strong>: API 一行启用, 不用关心模型部署</li>
+<li><strong>缺点</strong>: 一般只支持自家提供的 reranker 模型, 自定义有限</li>
+</ul>
+<p>适合<strong>已经在用 Pinecone 做向量库的团队</strong>, 一键升级到带 rerank 的检索。</p>
+<h3 id="4-Search-Quality-Eval-工具"><a href="#4-Search-Quality-Eval-工具" class="headerlink" title="4. Search Quality Eval 工具"></a>4. Search Quality Eval 工具</h3><p>reranker 选型必须靠评测,不能拍脑袋。主流工具:</p>
+<ul>
+<li><strong>Ranx (Python)</strong>: NDCG &#x2F; MRR &#x2F; MAP &#x2F; Recall@k 一站算, 支持多模型对比, 开源</li>
+<li><strong>TREC eval (C)</strong>: 学术标准, 工业团队几乎都用, 输入是 TREC 格式</li>
+<li><strong>BEIR benchmark</strong>: 跨数据集对比, reranker 选型直接看 BEIR leaderboard</li>
+<li><strong>MTEB Reranking sub-leaderboard</strong>: HuggingFace 维护, 主流 reranker 在多个数据集上的横评</li>
+</ul>
+<p>入门项目至少装一个 Ranx, 50 条评测就能算出 NDCG@5 和 MRR, 选型有数。</p>
+<h3 id="5-多样性-MMR-跟-rerank-的关系"><a href="#5-多样性-MMR-跟-rerank-的关系" class="headerlink" title="5. 多样性 (MMR) 跟 rerank 的关系"></a>5. 多样性 (MMR) 跟 rerank 的关系</h3><p>reranker 是 “选最相关的”, 不管会不会重复。如果 top-10 里有 5 条都讲同一件事, 用户和 LLM 都吃亏。<strong>MMR (Maximal Marginal Relevance)</strong> 是 rerank 之后的”去同质化”。</p>
+<p>公式:</p>
+<figure class="highlight plaintext"><table><tr><td class="gutter"><pre><span class="line">1</span><br></pre></td><td class="code"><pre><span class="line">MMR(d) = arg max_&#123;d ∈ candidates&#125;  λ · rel(d, q) - (1 - λ) · max_&#123;d&#x27; ∈ selected&#125; sim(d, d&#x27;)</span><br></pre></td></tr></table></figure>
+
+<p>人话: 既要跟 query 相关 (<code>rel(d, q)</code> 高), 也要跟已选的不像 (<code>sim(d, d&#39;)</code> 低)。<code>λ ∈ [0, 1]</code> 平衡两边, 0.5-0.7 是经验区间。</p>
+<p>实战做法: cross-encoder 给 <code>rel(d, q)</code> 当 MMR 的相关度项, MMR 在 top-30 里挑 top-10, 既相关又不重复。</p>
+<p>工具: LangChain <code>ContextualCompressionRetriever</code>, LlamaIndex <code>MMRPostprocessor</code>, Vespa 内置 diversity 维度都支持。</p>
+<hr>
+<h2 id="第六部分-Reranker-集成的常见误区"><a href="#第六部分-Reranker-集成的常见误区" class="headerlink" title="第六部分:Reranker 集成的常见误区"></a>第六部分:Reranker 集成的常见误区</h2><p>这一节列五个常见坑,跟具体项目无关,都是社区里反复出现的:</p>
+<ul>
+<li><p><strong>误区 1: 以为 “rerank 一定涨指标”</strong>。如果粗排已经把对的排在 top-3, rerank 再洗一遍可能反而把噪音顶上去 (cross-encoder 也会犯错)。<strong>必须有评测集量化</strong>,不涨就关掉,别盲目信任。</p>
+</li>
+<li><p><strong>误区 2: 用没在中文语料微调的英文 reranker 处理中文 query</strong>。ms-marco-MiniLM 在英文上漂亮,中文上经常乱排。中文场景 bge-reranker-v2-m3 &#x2F; Cohere multilingual 才是默认选项。</p>
+</li>
+<li><p><strong>误区 3: 不放阈值光看 top-k</strong>。query 没命中知识库, reranker 还是会从粗排候选里挑 top-k 返回, 喂给 LLM 直接幻觉。一定要有”拒答”机制 (阈值或 LLM 自觉拒答, 后面专讲)。</p>
+</li>
+<li><p><strong>误区 4: 把 reranker 的分跟 cosine 分混在一起做加权融合</strong>。两者尺度完全不同 (cosine ∈ [-1, 1] 实际 [0, 1], rerank sigmoid 后 [0, 1] 但分布完全不同), 加权后基本是噪音。融合用 RRF 这种 rank-based 方案, 别 score-based。</p>
+</li>
+<li><p><strong>误区 5: 模型加载失败用 SystemExit 这种”不继承 Exception”的异常</strong>。调用方写的”宽 catch 降级路径”全是死代码, 进程直接挂掉, 降级和埋点形同虚设 (后面 7.1 坑 3 专讲)。</p>
+</li>
+</ul>
+<p>这五条覆盖了 80% 的踩坑场景。剩下的细节, 第七节展开。</p>
+<hr>
+<h2 id="第七部分-小型实现的常见坑-→-生产对策"><a href="#第七部分-小型实现的常见坑-→-生产对策" class="headerlink" title="第七部分:小型实现的常见坑 → 生产对策"></a>第七部分:小型实现的常见坑 → 生产对策</h2><blockquote>
+<p>这一节是全文最重的部分。主语统一用 “demo 实现 &#x2F; 小型项目 &#x2F; 学习场景 &#x2F; 入门做法”, 对面是 “生产 &#x2F; 工业级 &#x2F; 规模化部署”。所有坑都是 RAG 社区里反复出现的, 不绑定任何特定项目。</p>
+</blockquote>
+<h3 id="7-1-常见坑"><a href="#7-1-常见坑" class="headerlink" title="7.1 常见坑"></a>7.1 常见坑</h3><h4 id="坑-1-单-score-字段双语义-rerank-分覆盖粗排分"><a href="#坑-1-单-score-字段双语义-rerank-分覆盖粗排分" class="headerlink" title="坑 1: 单 score 字段双语义 (rerank 分覆盖粗排分)"></a>坑 1: 单 score 字段双语义 (rerank 分覆盖粗排分)</h4><p><strong>demo 实现常见做法</strong>: 检索函数返回 <code>{&quot;text&quot;: ..., &quot;score&quot;: ...}</code> 列表, score 字段既装粗排的 cosine, 又装 rerank 的分。开启 reranker 后,新分覆盖旧分,字段名不变。</p>
+<p><strong>症状</strong>:</p>
+<ul>
+<li>上层代码看不出来 “这个 score 是怎么来的”</li>
+<li>日志埋点把 cosine 误当 rerank 分比对, 评测时一头雾水</li>
+<li>想做 A&#x2F;B 时分不开两路分数的贡献</li>
+</ul>
+<p><strong>本质</strong>: 单字段在两种语义间复用。vector cosine ∈ [-1, 1] (实际多在 [0, 1]), rerank logit 经 sigmoid 后 [0, 1] 但分布完全不同——同一个数 0.6, 在 cosine 里算 “比较像”, 在 rerank 里算 “中等相关”。<strong>名字一样, 意义不同</strong>, 是工程上典型的 “隐式 schema 坑”。</p>
+<p><strong>退化级</strong>: ⭐ (1 颗星, 严重退化)</p>
+<p><strong>生产做法</strong>: 多字段并存, 每路检索器自己一个分字段, 最终保留一个 <code>score</code> 当 “由策略决定的当前最优分”:</p>
+<figure class="highlight json"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br></pre></td><td class="code"><pre><span class="line"><span class="punctuation">&#123;</span></span><br><span class="line">  <span class="attr">&quot;text&quot;</span><span class="punctuation">:</span> <span class="string">&quot;...&quot;</span><span class="punctuation">,</span></span><br><span class="line">  <span class="attr">&quot;vector_score&quot;</span><span class="punctuation">:</span> <span class="number">0.78</span><span class="punctuation">,</span></span><br><span class="line">  <span class="attr">&quot;bm25_score&quot;</span><span class="punctuation">:</span> <span class="number">4.32</span><span class="punctuation">,</span></span><br><span class="line">  <span class="attr">&quot;rrf_score&quot;</span><span class="punctuation">:</span> <span class="number">0.0328</span><span class="punctuation">,</span></span><br><span class="line">  <span class="attr">&quot;rerank_score&quot;</span><span class="punctuation">:</span> <span class="number">0.6904</span><span class="punctuation">,</span></span><br><span class="line">  <span class="attr">&quot;score&quot;</span><span class="punctuation">:</span> <span class="number">0.6904</span></span><br><span class="line"><span class="punctuation">&#125;</span></span><br></pre></td></tr></table></figure>
+
+<p><strong>生产参考</strong>:</p>
+<ul>
+<li>Elasticsearch 8.x 的 <code>_score</code> + <code>fields</code> 同时返回, 各算子可拿到原始分</li>
+<li>Vespa 每个 <code>rank-feature</code> 都能取</li>
+<li>Qdrant payload 自定义字段, 任意保留</li>
+</ul>
+<p><strong>退化级</strong>: ⭐⭐⭐⭐ (4 颗星, 接近最佳实践)</p>
+<hr>
+<h4 id="坑-2-sigmoid-0-0-5-小语料-保守模型-→-绝对阈值过滤形同虚设"><a href="#坑-2-sigmoid-0-0-5-小语料-保守模型-→-绝对阈值过滤形同虚设" class="headerlink" title="坑 2: sigmoid(0) &#x3D; 0.5 + 小语料 + 保守模型 → 绝对阈值过滤形同虚设"></a>坑 2: sigmoid(0) &#x3D; 0.5 + 小语料 + 保守模型 → 绝对阈值过滤形同虚设</h4><p><strong>demo 实现常见做法</strong>: 设一个绝对阈值, 比如 <code>rerank_score &gt;= 0.5</code> 才返回, 不到的丢掉。</p>
+<p><strong>症状</strong>: 给一组<strong>完全不相关的 query</strong> (比如问”今天天气怎么样”, 但语料只讲 RAG), reranker 输出<strong>都在 0.50 上下漂</strong>。绝对阈值过滤掉的不多, 反而把弱相关的也放过去喂给 LLM。</p>
+<p><strong>三个原因叠加, 缺一不可</strong>:</p>
+<ol>
+<li><p><strong>sigmoid(0) &#x3D; 0.5 是数学决定的</strong>。cross-encoder 输出 logit, sigmoid 函数把 logit 压到 [0, 1], 当模型 “不确定” 时 logit 接近 0, 分数自然接近 0.5。这不是模型差, 是 sigmoid 的形状决定的——只要 logit 没有显著偏离 0, sigmoid(logit) 就在 0.5 附近。</p>
+</li>
+<li><p><strong>小语料 (几十块以内) 时, 候选池里没有”明显不相关”的 doc</strong>。如果只有十几块 chunk, 全是同一主题, 那”最不相关”的 doc 跟 query 也有词重合 (都是中文 &#x2F; 都讲技术), 模型难给低分。</p>
+<figure class="highlight plaintext"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br></pre></td><td class="code"><pre><span class="line">query: &quot;怎么配置 X 参数&quot;</span><br><span class="line">候选: [讲 X 历史的, 讲 X 模块的, 讲 X 设计哲学的, 讲 X 配置的, ...]</span><br></pre></td></tr></table></figure>
+<p>全部都跟 X 有关, 模型很难说哪个 “完全不相关”。</p>
+</li>
+<li><p><strong>保守模型不敢打负分</strong>。多语种 reranker 在公开数据 (MS MARCO 等) 上微调时, 为了泛化, 倾向输出 logit ∈ [-1, +1.5] 这种窄区间, sigmoid 后大多落在 [0.27, 0.82], 中间地带挤得满满当当, 区分度不大。</p>
+</li>
+</ol>
+<p><strong>直接现象</strong>: 相关 query 的 top1 (比如 0.50-0.73) 跟不相关 query 的 top1 (比如 0.50-0.51) <strong>分布严重重叠</strong>, 在中间随便取一个值当阈值, 跟 “不设阈值” 几乎一样。</p>
+<p><strong>退化级</strong>: ⭐⭐ (2 颗星, 退化中度)</p>
+<p><strong>生产对策</strong>: 下面 “7.2 生产对策” 4 招专讲, 招招都比 “拍一个 0.5 上线” 强。</p>
+<hr>
+<h4 id="坑-3-SystemExit-不继承-Exception-→-调用方宽-catch-兜不住"><a href="#坑-3-SystemExit-不继承-Exception-→-调用方宽-catch-兜不住" class="headerlink" title="坑 3: SystemExit 不继承 Exception → 调用方宽 catch 兜不住"></a>坑 3: SystemExit 不继承 Exception → 调用方宽 catch 兜不住</h4><p><strong>demo 实现常见做法</strong>: reranker 模型文件缺失时直接 <code>raise SystemExit(&quot;model not found&quot;)</code>, 觉得 “干净退出”。调用方写:</p>
+<figure class="highlight python"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br></pre></td><td class="code"><pre><span class="line"><span class="keyword">try</span>:</span><br><span class="line">    reranker = Reranker(model_path)</span><br><span class="line"><span class="keyword">except</span> Exception <span class="keyword">as</span> e:</span><br><span class="line">    log_event(<span class="string">&quot;reranker.load_failed&quot;</span>, &#123;<span class="string">&quot;error_type&quot;</span>: <span class="built_in">type</span>(e).__name__&#125;)</span><br><span class="line">    <span class="comment"># 降级到不用 reranker</span></span><br></pre></td></tr></table></figure>
+
+<p><strong>症状</strong>: <code>SystemExit</code> 不继承 <code>Exception</code> (它继承 <code>BaseException</code>), 上面的 <code>except Exception</code> 抓不住, <strong>进程直接退出</strong>, 降级路径 (continue without reranker) 和埋点全是死代码。</p>
+<p><strong>本质</strong>: Python 异常继承层级里有四个特殊 <code>BaseException</code> 子类:</p>
+<figure class="highlight plaintext"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br></pre></td><td class="code"><pre><span class="line">BaseException</span><br><span class="line">├── SystemExit          ← sys.exit() / raise SystemExit</span><br><span class="line">├── KeyboardInterrupt   ← Ctrl+C</span><br><span class="line">├── GeneratorExit       ← 生成器关闭</span><br><span class="line">└── Exception           ← 业务异常都在这下面</span><br><span class="line">    ├── OSError</span><br><span class="line">    │   ├── FileNotFoundError</span><br><span class="line">    │   └── ...</span><br><span class="line">    ├── ValueError</span><br><span class="line">    └── ...</span><br></pre></td></tr></table></figure>
+
+<p>任何 “降级用宽 catch” 的代码 (<code>except Exception</code>) 都兜不住前三类。这是 Python 文档明写的设计 (PEP 3134 时定下来), 目的是让 <code>sys.exit()</code> 和 <code>Ctrl+C</code> 能穿透业务异常处理, 让进程真的能退。</p>
+<p>库作者写 <code>raise SystemExit(1)</code> 时往往只想到 “退出干净”, 没想到 “调用方需要降级”。结果就是<strong>库逼着调用方接受 “失败 &#x3D; 进程死”</strong>, 一致性差, 没法降级。</p>
+<p><strong>退化级</strong>: ⭐ (1 颗星, 严重退化, 因为它让所有降级路径失效)</p>
+<p><strong>三种修法对比</strong>:</p>
+<table>
+<thead>
+<tr>
+<th>修法</th>
+<th>做法</th>
+<th>利</th>
+<th>弊</th>
+<th>推荐度</th>
+</tr>
+</thead>
+<tbody><tr>
+<td>A: 改 except</td>
+<td>调用方写 <code>except (Exception, SystemExit)</code></td>
+<td>不动库</td>
+<td>把 Ctrl+C 也兜了, 用户按了退不出</td>
+<td>✗ 不推荐</td>
+</tr>
+<tr>
+<td>B: 改 raise</td>
+<td>库改成 <code>raise FileNotFoundError(&quot;model dir missing: ...&quot;)</code></td>
+<td>语义对题, 标准 catch 兜得住, 各调用方写法不用改</td>
+<td>改库代码</td>
+<td>⭐ <strong>推荐</strong></td>
+</tr>
+<tr>
+<td>C: 接受现状</td>
+<td>不改, 文档里写”加载失败会直接退出, 自行兜底”</td>
+<td>不改代码</td>
+<td>把降级责任甩给所有调用方, 一致性差</td>
+<td>✗ 不推荐</td>
+</tr>
+</tbody></table>
+<p><strong>生产参考</strong>:</p>
+<ul>
+<li>HuggingFace <code>transformers</code> 的 <code>AutoModel.from_pretrained</code> 抛 <code>OSError</code></li>
+<li>sentence-transformers 抛 <code>OSError</code> 或库定义的 <code>LookupError</code> 子类</li>
+<li>PyTorch <code>torch.load</code> 文件不存在抛 <code>FileNotFoundError</code></li>
+</ul>
+<p><strong>没人用 SystemExit 当业务错误</strong>, 这是约定俗成。</p>
+<h3 id="7-2-生产对策-—-4-招应对绝对阈值失效"><a href="#7-2-生产对策-—-4-招应对绝对阈值失效" class="headerlink" title="7.2 生产对策 — 4 招应对绝对阈值失效"></a>7.2 生产对策 — 4 招应对绝对阈值失效</h3><p>坑 2 是 reranker 集成最棘手的问题。这里展开 4 招, 从轻到重排, 都能用。</p>
+<h4 id="招-1-Platt-scaling-Isotonic-regression-做分数校准"><a href="#招-1-Platt-scaling-Isotonic-regression-做分数校准" class="headerlink" title="招 1: Platt scaling &#x2F; Isotonic regression 做分数校准"></a>招 1: Platt scaling &#x2F; Isotonic regression 做分数校准</h4><p><strong>思路</strong>: 收集 100-1000 条 <code>(query, doc, 真相关吗?)</code> 标注, 训一个 1D 逻辑回归 (Platt scaling) 或保序回归 (Isotonic regression), 把 raw rerank score 映射成 “真正的相关概率”。</p>
+<figure class="highlight plaintext"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br></pre></td><td class="code"><pre><span class="line">raw_score (sigmoid 后) ─→ [calibrator] ─→ calibrated_score (真概率)</span><br><span class="line"></span><br><span class="line">经典效果: 原本 0.5 的中间分, 校准后被压到 0.1 (因为大多数 0.5 其实是 &quot;不相关&quot;)</span><br><span class="line">        原本 0.7 的分, 校准后保留在 0.7 (那段确实是 &quot;相关&quot;)</span><br></pre></td></tr></table></figure>
+
+<p><strong>效果</strong>: 0.5 这种”中间值”在校准后会被压到接近 0 (大多数中间分数其实是 “不相关”), 阈值变得有意义, 可以放心写 <code>score &gt;= 0.5</code> 当过滤条件。</p>
+<p><strong>代价</strong>:</p>
+<ul>
+<li>需要标注 (人工 100 条, 或用 LLM-judge 当 labeler 标 500 条)</li>
+<li>标注分布要跟在线 query 分布对得上 (校准是有 bias 的, 用错数据校反了)</li>
+<li>校准模型本身要定期重训 (语料更新 &#x2F; 模型升级后重新校)</li>
+</ul>
+<p><strong>代表实现</strong>: scikit-learn <code>CalibratedClassifierCV</code> (Platt &#x2F; Isotonic 都封装好了), Cohere Rerank-3 内部据说做了类似处理。</p>
+<h4 id="招-2-相对阈值-不卡绝对分"><a href="#招-2-相对阈值-不卡绝对分" class="headerlink" title="招 2: 相对阈值 (不卡绝对分)"></a>招 2: 相对阈值 (不卡绝对分)</h4><p><strong>思路</strong>: 不看分数本身, 看分数的<strong>结构关系</strong>:</p>
+<table>
+<thead>
+<tr>
+<th>方式</th>
+<th>公式</th>
+<th>含义</th>
+</tr>
+</thead>
+<tbody><tr>
+<td>比例阈值</td>
+<td><code>top1 / mean(top5) &gt;= 1.5</code></td>
+<td>top1 显著高于平均, 有命中</td>
+</tr>
+<tr>
+<td>差值阈值</td>
+<td><code>top1 - top5 &gt;= 0.05</code></td>
+<td>top1 跟 top5 拉开了差</td>
+</tr>
+<tr>
+<td>Gap-based</td>
+<td><code>top1 - top2 &gt;= 0.1</code></td>
+<td>top1 鹤立鸡群</td>
+</tr>
+</tbody></table>
+<p><strong>效果</strong>: 对模型分数分布不敏感, 只关心 “有没有显著强的那一条”。同一个 query 在不同 reranker &#x2F; 不同模型版本上都能用。</p>
+<p><strong>代价</strong>: 调参从 “阈值 T” 换成 “倍率 R 或差值 Δ”, 仍要小规模实测找合适的值。但实测样本量不需要校准那么多, 30-50 条就能定。</p>
+<p><strong>代表实现</strong>:</p>
+<ul>
+<li>LangChain <code>ContextualCompressionRetriever</code></li>
+<li>LlamaIndex <code>SimilarityCutoffPostprocessor</code></li>
+<li>Vespa 的 dynamic threshold</li>
+</ul>
+<p><strong>这一招是入门项目最值得做的升级</strong>, 不需要标注、不需要重训, 几行代码切过去就有效果。</p>
+<h4 id="招-3-把”拒答”交给-LLM-兜底防线"><a href="#招-3-把”拒答”交给-LLM-兜底防线" class="headerlink" title="招 3: 把”拒答”交给 LLM (兜底防线)"></a>招 3: 把”拒答”交给 LLM (兜底防线)</h4><p><strong>思路</strong>: reranker 即使过了阈值也未必真相关, 让最终的 LLM 看完资料后<strong>自觉拒答</strong>。在 system prompt 里写明:</p>
+<figure class="highlight plaintext"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br></pre></td><td class="code"><pre><span class="line">仅基于以下资料回答用户问题。如果资料里没有相关信息, 直接回复</span><br><span class="line">&quot;根据提供的资料, 我无法回答这个问题&quot;。不要编造。</span><br></pre></td></tr></table></figure>
+
+<p><strong>效果</strong>: reranker 是粗筛, LLM 是终审。两道防线总有一道兜住。</p>
+<p><strong>代价</strong>: 对 LLM 的 “诚实性” 有依赖。新模型 (Claude 4.x &#x2F; GPT-4o &#x2F; DeepSeek V3) 已经做得不错, 但弱模型 (7B 开源、未充分对齐) 不靠谱, 拒答指令照样幻觉。</p>
+<p><strong>代表实现</strong>: 所有靠谱 RAG 系统的 system prompt 都包含这种约束。OpenAI 官方 Cookbook 的 RAG 例子也是这么写的, LangChain &#x2F; LlamaIndex 的默认 prompt 模板里全都有 “if you don’t know, say I don’t know”。</p>
+<p><strong>退化级</strong>: 这个不是退化, 是<strong>标配的双保险</strong>, 生产也照样要。</p>
+<h4 id="招-4-LLM-as-reranker-替代-cross-encoder"><a href="#招-4-LLM-as-reranker-替代-cross-encoder" class="headerlink" title="招 4: LLM-as-reranker (替代 cross-encoder)"></a>招 4: LLM-as-reranker (替代 cross-encoder)</h4><p><strong>思路</strong>: 直接用 LLM (Claude Haiku &#x2F; GPT-4o-mini &#x2F; GLM-4-Flash 这类轻量模型) 当 reranker, 用 prompt 把候选喂进去让它输出每条的相关度。</p>
+<p><strong>效果</strong>: 精度通常<strong>比 cross-encoder 高一截</strong> (推理能力强), 不存在 “sigmoid 中间地带” 问题。可以直接给 0&#x2F;1 二分类或 {高,中,低} 三档, 阈值天然有意义。</p>
+<p><strong>代价</strong>:</p>
+<ul>
+<li>延迟秒级 (cross-encoder 是百毫秒级)</li>
+<li>成本按 token 算 (cross-encoder 几乎零成本)</li>
+<li>输出要做 schema 校验 (LLM 偶尔会输出非法格式)</li>
+</ul>
+<p><strong>代表实现</strong>:</p>
+<ul>
+<li>Cohere Rerank v3 &#x2F; Voyage rerank-2 内部据传走的就是 LLM-judge 路线</li>
+<li>LlamaIndex 的 <code>LLMRerank</code></li>
+<li>LangChain <code>LLMChainExtractor</code> 提示工程版本</li>
+</ul>
+<p><strong>适用</strong>: 高价值场景 (法律 &#x2F; 医疗 &#x2F; 金融) 接受秒级延迟和高单价, 或者<strong>离线评估</strong>当 ground truth (这个用法最常见)。</p>
+<h3 id="7-3-综合对照表"><a href="#7-3-综合对照表" class="headerlink" title="7.3 综合对照表"></a>7.3 综合对照表</h3><p>把上面三个坑 + 通用退化点统一列一遍, 让”从 demo 走到生产”的路线一眼能看清:</p>
+<table>
+<thead>
+<tr>
+<th>退化点</th>
+<th>demo 实现常见做法</th>
+<th>生产做法</th>
+<th>退化级对照</th>
+</tr>
+</thead>
+<tbody><tr>
+<td>单字段双语义</td>
+<td><code>score</code> 一字段两用</td>
+<td>多字段并存 (<code>vector_score</code> &#x2F; <code>rerank_score</code> &#x2F; final <code>score</code>)</td>
+<td>⭐ vs ⭐⭐⭐⭐</td>
+</tr>
+<tr>
+<td>绝对阈值</td>
+<td><code>rerank_score &gt;= 0.5</code> 一刀切</td>
+<td>Platt 校准 &#x2F; 相对阈值 &#x2F; LLM 兜底拒答 &#x2F; LLM-as-reranker</td>
+<td>⭐⭐ vs ⭐⭐⭐⭐</td>
+</tr>
+<tr>
+<td>模型加载失败异常</td>
+<td><code>raise SystemExit(1)</code></td>
+<td><code>raise FileNotFoundError / OSError</code></td>
+<td>⭐ vs ⭐⭐⭐⭐⭐</td>
+</tr>
+<tr>
+<td>模型选型</td>
+<td>用一个固定 cross-encoder</td>
+<td>多模型 ensemble + LLM-judge 离线评估选最优</td>
+<td>⭐ vs ⭐⭐⭐⭐</td>
+</tr>
+<tr>
+<td>候选量</td>
+<td>N&#x3D;30 写死</td>
+<td>按 query 类型 &#x2F; 流量分桶动态调 (30-1000)</td>
+<td>⭐⭐ vs ⭐⭐⭐⭐⭐</td>
+</tr>
+<tr>
+<td>阈值策略</td>
+<td>静态阈值</td>
+<td>按 query 类型动态调, 配 NDCG &#x2F; MRR 监控</td>
+<td>⭐⭐ vs ⭐⭐⭐⭐</td>
+</tr>
+<tr>
+<td>多样性 (MMR)</td>
+<td>没做</td>
+<td>MMR &#x2F; DPP post-processor 标配</td>
+<td>⭐ vs ⭐⭐⭐⭐</td>
+</tr>
+<tr>
+<td>多阶段 cascade</td>
+<td>单一 cross-encoder</td>
+<td>L0 + L1 GBDT + L2 cross-encoder + L3 LLM</td>
+<td>⭐⭐ vs ⭐⭐⭐⭐⭐</td>
+</tr>
+</tbody></table>
+<p>⭐ 数越多, 离生产最佳实践越近。退化级 ⭐ 跟 ⭐⭐⭐⭐⭐ 差三档以上的, 都是补齐路线里 ROI 最高的几条。</p>
+<hr>
+<h2 id="第八部分-补齐路线-按-ROI-排序"><a href="#第八部分-补齐路线-按-ROI-排序" class="headerlink" title="第八部分:补齐路线 (按 ROI 排序)"></a>第八部分:补齐路线 (按 ROI 排序)</h2><p>给”想从 demo 走到生产”的读者一份路线图。顺序不是技术先进度, 是 <strong>“改最少代码 &#x2F; 拿最大收益”</strong> 的排序:</p>
+<ol>
+<li><p><strong>加可观测性</strong>。落 <code>reranker.rerank</code> &#x2F; <code>reranker.load_failed</code> 这种 JSONL 事件, 字段至少包括 <code>query_hash</code> &#x2F; <code>n_candidates</code> &#x2F; <code>top1_score</code> &#x2F; <code>latency_ms</code> &#x2F; <code>model_id</code>。后续所有改动都靠数据说话, 没数据全是猜。</p>
+</li>
+<li><p><strong>加评测集</strong>。50-100 条 <code>(query, 期望相关 doc id)</code> 标注, 算 NDCG@5 &#x2F; MRR &#x2F; Recall@10。规模不大就够开始量化。</p>
+</li>
+<li><p><strong>修单字段双语义</strong> (坑 1)。多字段并存, 这是后续 A&#x2F;B 和评测的前提, 改完后续工作才有抓手。</p>
+</li>
+<li><p><strong>修 SystemExit → FileNotFoundError 之类</strong> (坑 3)。让宽 catch 真正生效, 模型加载失败能优雅降级到 “无 rerank 版本”。</p>
+</li>
+<li><p><strong>修阈值</strong> (招 2, 相对阈值)。从绝对阈值切到相对阈值, 不需要标注, 几行代码改完, 立刻有效果。</p>
+</li>
+<li><p><strong>若需要更准, 上 Platt 校准</strong> (招 1)。要小规模标注 (100-500 条), 校准后绝对阈值才真有意义。</p>
+</li>
+<li><p><strong>若需要更稳, 上 cascade</strong>。粗排 1000 → GBDT 100 → cross-encoder 30 → LLM 5。工程改动大, 但效果天花板高。</p>
+</li>
+<li><p><strong>若 LLM-judge 跑得起, 加招 4 当二级 rerank</strong>。高价值场景接受秒级延迟和高单价时, 用 LLM 兜底, 精度再上一档。</p>
+</li>
+</ol>
+<p>前 5 条都是 “几小时到几天” 能做完的, 性价比最高。后 3 条是 “几周到几个月” 的工程, 量级到了再上。</p>
+<hr>
+<h2 id="附录-A-术语小词典"><a href="#附录-A-术语小词典" class="headerlink" title="附录 A:术语小词典"></a>附录 A:术语小词典</h2><ul>
+<li><strong>cross-encoder</strong>: 把 query 和 doc 拼起来一起过 transformer 的模型, 精度高速度慢, 适合精排</li>
+<li><strong>bi-encoder</strong>: query 和 doc 分别编码再算 cosine 的模型, 速度快精度次之, 适合粗排</li>
+<li><strong>late interaction (ColBERT)</strong>: 各自编码出 token 级向量, 检索时算 token-token 的 max-sim, 介于 bi&#x2F;cross 之间</li>
+<li><strong>logit</strong>: 模型最后一层的原始输出 (未经 sigmoid 或 softmax), 实数, 范围一般 ±10 以内</li>
+<li><strong>sigmoid</strong>: <code>σ(x) = 1 / (1 + e^-x)</code>, 把任意实数压到 (0, 1), <code>σ(0) = 0.5</code></li>
+<li><strong>softmax</strong>: 把一组实数归一成概率分布, 多分类任务的常见输出层</li>
+<li><strong>L0 &#x2F; L1 &#x2F; L2 cascade</strong>: 工业搜索的多阶段流水线, L0 粗排 (倒排+ANN), L1 二排 (GBDT), L2 精排 (cross-encoder)</li>
+<li><strong>MRR (Mean Reciprocal Rank)</strong>: 第一个相关结果排名的倒数的均值, 衡量 top-1 准不准</li>
+<li><strong>NDCG (Normalized Discounted Cumulative Gain)</strong>: 考虑相关度等级和排名位置的综合指标, LTR 默认优化目标</li>
+<li><strong>MAP (Mean Average Precision)</strong>: 多个 query 的 AP 平均, 衡量整体排序质量</li>
+<li><strong>Recall@k</strong>: top-k 里至少有一个相关 doc 的比例, 衡量召回</li>
+<li><strong>Precision@k</strong>: top-k 里相关 doc 占比, 衡量精度</li>
+<li><strong>MMR (Maximal Marginal Relevance)</strong>: rerank 后的多样性算法, 平衡相关性和去重复</li>
+<li><strong>DPP (Determinantal Point Process)</strong>: 比 MMR 更严格的多样性算法, 数学上保证子集行列式最大</li>
+<li><strong>diversity</strong>: 排序结果的多样性, 反指标是 “前 N 条全讲同一件事”</li>
+<li><strong>Platt scaling</strong>: 用 1D 逻辑回归把模型 raw score 校准成真概率, 1999 年提出</li>
+<li><strong>Isotonic regression</strong>: 保序回归校准, 不假设线性, 比 Platt 灵活</li>
+<li><strong>calibration</strong>: 分数校准, 让模型输出的 0.7 真的对应 70% 的事件概率</li>
+<li><strong>BEIR benchmark</strong>: 零样本检索评测集合 (18 个数据集), reranker 选型主要看 BEIR leaderboard</li>
+<li><strong>MS MARCO</strong>: 微软发布的大规模检索数据集 (800 万 doc + 100 万 query), 多数 reranker 在这上面预训练</li>
+<li><strong>MTEB</strong>: Massive Text Embedding Benchmark, HuggingFace 维护, 含 Reranking sub-leaderboard</li>
+<li><strong>LambdaMART</strong>: 基于 GBDT 的 listwise 排序模型, 微软 LightGBM 实现, 工业 LTR 主力</li>
+<li><strong>RankNet &#x2F; pairwise &#x2F; listwise &#x2F; pointwise</strong>: LTR 训练损失的四种范式, listwise 表达力最强</li>
+<li><strong>LLM-as-reranker &#x2F; LLM-judge</strong>: 用通用 LLM 当 reranker 或评测器, 精度高但慢且贵</li>
+<li><strong>shadow eval</strong>: 影子评估, 把新模型的输出跟旧模型并行记录, 不影响线上, 用离线评测对比</li>
+<li><strong>query × doc joint encoding</strong>: query 和 doc 联合编码, cross-encoder 的核心机制</li>
+<li><strong>token-level interaction</strong>: token 级交互, ColBERT 和 cross-encoder 都有, bi-encoder 没有</li>
+</ul>
+<hr>
+<h2 id="附录-B-进一步阅读"><a href="#附录-B-进一步阅读" class="headerlink" title="附录 B:进一步阅读"></a>附录 B:进一步阅读</h2><p><strong>论文 &#x2F; 原始资料:</strong></p>
+<ul>
+<li><em>Sentence-BERT: Sentence Embeddings using Siamese BERT-Networks</em> (Reimers &amp; Gurevych, 2019) — bi-encoder 现代奠基</li>
+<li><em>ColBERT: Efficient and Effective Passage Search via Contextualized Late Interaction over BERT</em> (Khattab &amp; Zaharia, 2020) — Late Interaction 原始论文</li>
+<li><em>ColBERTv2: Effective and Efficient Retrieval via Lightweight Late Interaction</em> (Santhanam et al., 2022) — ColBERT 压缩版</li>
+<li><em>Beyond Goldfish Memory: Long-Term Open-Domain Conversation</em> (Xu et al., 2022) — 对话场景的 rerank 实践</li>
+<li><em>Lost in the Middle: How Language Models Use Long Contexts</em> (Liu et al., 2023) — 解释了 “为什么 rerank 后还要做 reorder”</li>
+<li><em>From RankNet to LambdaRank to LambdaMART: An Overview</em> (Burges, 2010) — LambdaMART 经典综述</li>
+<li><em>Distilling Dense Representations for Ranking using Tightly-Coupled Teachers</em> (Lin et al., 2020) — cross-encoder 蒸馏到 bi-encoder 的经典工作</li>
+</ul>
+<p><strong>工程实践 &#x2F; 文档:</strong></p>
+<ul>
+<li>HuggingFace sentence-transformers 的 <code>CrossEncoder</code> 文档与示例</li>
+<li>Cohere Rerank API 官方文档</li>
+<li>Vespa Ranking Profile 文档 (开源里最完整的 cascade 实现案例)</li>
+<li>LangChain <code>ContextualCompressionRetriever</code> 与 <code>CrossEncoderReranker</code> 源码</li>
+<li>LlamaIndex <code>LLMRerank</code> &#x2F; <code>SimilarityCutoffPostprocessor</code> 文档</li>
+<li>Pinecone Reranking 教程</li>
+<li>Qdrant + FastEmbed + Rerank 集成教程</li>
+<li>ONNX Runtime 的 BERT 量化推理示例</li>
+</ul>
+<p><strong>评测 &#x2F; 基准:</strong></p>
+<ul>
+<li>BEIR Benchmark — 跨 18 个数据集的零样本检索评测, reranker 选型直接看 leaderboard</li>
+<li>MTEB Reranking sub-leaderboard — HuggingFace 维护, 主流 reranker 横评</li>
+<li>MS MARCO Passage Ranking — 检索社区基准, 多数 reranker 在这上面预训练</li>
+<li>TREC Deep Learning Track — 学术标准评测, NDCG@10 是金标</li>
+<li>T2Reranking — 中文检索评测, 国内 reranker 选型必看</li>
+<li>CMTEB — 中文 MTEB, 含中文 reranking 子任务</li>
+</ul>
+<hr>
+<h2 id="写在最后"><a href="#写在最后" class="headerlink" title="写在最后"></a>写在最后</h2><p>reranker 不是银弹, 是一把 “把粗排的网捞回来的鱼再挑一遍” 的精排刀。它的天花板由几件事共同决定:</p>
+<ol>
+<li><strong>rerank 是粗排的精排刀, 不是粗排的替代品</strong> —— 粗排召回不够, 再准的 reranker 也救不了</li>
+<li><strong>阈值的标定比模型选型还难</strong> —— sigmoid 中间地带、保守模型、小语料三件事一叠就废</li>
+<li><strong>宽 catch 兜不住 SystemExit</strong> —— 库里别拿 SystemExit 当业务错, 调用方降级路径会全废</li>
+<li><strong>可观测性是后续所有改进的地基</strong> —— 没有 JSONL 日志, 所有优化都靠猜</li>
+<li><strong>评测集是所有调优的真相</strong> —— Recall@10 &#x2F; NDCG@5 &#x2F; MRR 没数, 上 reranker 跟没上效果一样</li>
+<li><strong>多样性跟相关性是两件事</strong> —— rerank 后的 MMR 不是锦上添花, 是 top-k 真用起来的必选项</li>
+</ol>
+<p>最后一句送给所有要做 RAG 的朋友: <strong>rerank 给你的不是 “更准的 top-1”, 是 “你终于知道 top-1 凭什么排第一”</strong>。把分数的语义、阈值的逻辑、降级的路径、评测的指标一件件搞清楚, 比换一个更大的 reranker 模型管用得多。</p>
+<p>希望这份指南对你有帮助。</p>
+<p>— <em>本文档遵循 <a target="_blank" rel="noopener" href="https://creativecommons.org/licenses/by/4.0/">CC BY 4.0</a> 协议, 可自由引用、修改、再发布, 保留出处即可。欢迎根据你自己的实战经验提 issue 或 PR。</em></p>
+</article>
+<div class="article-footer">
+    <section id="license">
+      <div class="header"><span>许可协议</span></div>
+      <div class="body"><p>本文采用 <a target="_blank" rel="noopener" href="https://creativecommons.org/licenses/by-nc-sa/4.0/">署名-非商业性使用-相同方式共享 4.0 国际</a> 许可协议，转载请注明出处。</p>
+</div>
+    </section>
+    
+
+</div>
+
+<div class="related-wrap" id="read-next"><section class="body"><div class="item" id="prev"></div><div class="item" id="next"><div class="note">较早文章</div><a href="/2026/06/24/RAG-%E6%96%87%E6%A1%A3%E6%8B%86%E5%88%86%E4%B8%8E%E6%A3%80%E7%B4%A2%E7%AD%96%E7%95%A5-%C2%B7-%E5%AE%9E%E6%88%98%E6%8C%87%E5%8D%97/">RAG 文档拆分与检索策略 · 实战指南</a></div></section></div>
+
+
+
+
+
+
+<footer class="page-footer footnote"><hr><div class="text"><p>本博客所有文章除特别声明外，均采用 <a target="_blank" rel="noopener" href="https://creativecommons.org/licenses/by-nc-sa/4.0/">CC BY-NC-SA 4.0</a> 许可协议，转载请注明出处。</p>
+</div></footer>
+<div class="main-mask" onclick="sidebar.dismiss()"></div></div><aside class="l_right">
+<div class="widgets">
+
+
+
+<widget class="widget-wrapper toc" id="data-toc" collapse="false"><div class="widget-header dis-select"><span class="name">本文目录</span><a class="cap-action" onclick="sidebar.toggleTOC()" ><svg xmlns="http://www.w3.org/2000/svg" width="32" height="32" viewBox="0 0 24 24"><path fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10 6h11m-11 6h11m-11 6h11M4 6h1v4m-1 0h2m0 8H4c0-1 2-2 2-3s-1-1.5-2-1"/></svg></a></div><div class="widget-body"><ol class="toc"><li class="toc-item toc-level-1"><a class="toc-link" href="#RAG-%E9%87%8D%E6%8E%92%E5%BA%8F-Reranking-%E5%AE%9E%E6%88%98%E6%8C%87%E5%8D%97"><span class="toc-text">RAG 重排序 (Reranking) 实战指南</span></a><ol class="toc-child"><li class="toc-item toc-level-2"><a class="toc-link" href="#%E7%9B%AE%E5%BD%95"><span class="toc-text">目录</span></a></li><li class="toc-item toc-level-2"><a class="toc-link" href="#%E5%89%8D%E8%A8%80-%E4%B8%BA%E4%BB%80%E4%B9%88%E2%80%9D%E7%B2%97%E6%8E%92%E5%A4%9F%E5%A5%BD%E4%BA%86%E2%80%9D%E4%B8%8D%E6%88%90%E7%AB%8B"><span class="toc-text">前言:为什么”粗排够好了”不成立</span></a></li><li class="toc-item toc-level-2"><a class="toc-link" href="#%E7%AC%AC%E4%B8%80%E9%83%A8%E5%88%86-cross-encoder-vs-bi-encoder"><span class="toc-text">第一部分:cross-encoder vs bi-encoder</span></a><ol class="toc-child"><li class="toc-item toc-level-3"><a class="toc-link" href="#1-bi-encoder-%E7%9A%84%E5%B7%A5%E4%BD%9C%E6%96%B9%E5%BC%8F"><span class="toc-text">1. bi-encoder 的工作方式</span></a></li><li class="toc-item toc-level-3"><a class="toc-link" href="#2-cross-encoder-%E7%9A%84%E5%B7%A5%E4%BD%9C%E6%96%B9%E5%BC%8F"><span class="toc-text">2. cross-encoder 的工作方式</span></a></li><li class="toc-item toc-level-3"><a class="toc-link" href="#3-%E4%B8%BA%E5%95%A5-cross-encoder-%E7%B2%BE%E5%BA%A6%E9%AB%98%E3%80%81%E5%BB%B6%E8%BF%9F%E4%B9%9F%E9%AB%98"><span class="toc-text">3. 为啥 cross-encoder 精度高、延迟也高</span></a></li><li class="toc-item toc-level-3"><a class="toc-link" href="#4-%E5%8F%8C%E5%A1%94-vs-%E5%8D%95%E5%A1%94%E7%9A%84%E5%9B%BE%E7%A4%BA%E6%84%8F"><span class="toc-text">4. 双塔 vs 单塔的图示意</span></a></li></ol></li><li class="toc-item toc-level-2"><a class="toc-link" href="#%E7%AC%AC%E4%BA%8C%E9%83%A8%E5%88%86-%E4%B8%BB%E6%B5%81-reranker-%E6%A8%A1%E5%9E%8B%E5%88%86%E7%B1%BB"><span class="toc-text">第二部分:主流 reranker 模型分类</span></a><ol class="toc-child"><li class="toc-item toc-level-3"><a class="toc-link" href="#1-%E9%80%9A%E7%94%A8-cross-encoder"><span class="toc-text">1. 通用 cross-encoder</span></a></li><li class="toc-item toc-level-3"><a class="toc-link" href="#2-LLM-as-reranker-LLM-judge"><span class="toc-text">2. LLM-as-reranker (LLM-judge)</span></a></li><li class="toc-item toc-level-3"><a class="toc-link" href="#3-ColBERT-Late-Interaction"><span class="toc-text">3. ColBERT &#x2F; Late Interaction</span></a></li><li class="toc-item toc-level-3"><a class="toc-link" href="#4-LambdaMART-GBDT-%E4%BC%A0%E7%BB%9F%E5%AD%A6%E4%B9%A0%E6%8E%92%E5%BA%8F"><span class="toc-text">4. LambdaMART &#x2F; GBDT 传统学习排序</span></a></li><li class="toc-item toc-level-3"><a class="toc-link" href="#5-%E9%80%89%E5%9E%8B%E5%AF%B9%E7%85%A7%E8%A1%A8"><span class="toc-text">5. 选型对照表</span></a></li></ol></li><li class="toc-item toc-level-2"><a class="toc-link" href="#%E7%AC%AC%E4%B8%89%E9%83%A8%E5%88%86-%E5%B7%A5%E7%A8%8B%E4%B8%8A%E2%80%9D%E7%B2%97%E6%8E%92-%E2%86%92-%E7%B2%BE%E6%8E%92%E2%80%9D%E6%B5%81%E6%B0%B4%E7%BA%BF"><span class="toc-text">第三部分:工程上”粗排 → 精排”流水线</span></a><ol class="toc-child"><li class="toc-item toc-level-3"><a class="toc-link" href="#1-%E4%B8%BA%E4%BB%80%E4%B9%88%E8%A6%81%E5%88%86%E9%98%B6%E6%AE%B5"><span class="toc-text">1. 为什么要分阶段</span></a></li><li class="toc-item toc-level-3"><a class="toc-link" href="#2-%E5%80%99%E9%80%89%E9%87%8F-N-%E6%80%8E%E4%B9%88%E5%AE%9A"><span class="toc-text">2. 候选量 N 怎么定</span></a></li><li class="toc-item toc-level-3"><a class="toc-link" href="#3-%E9%98%88%E5%80%BC-vs-top-k-%E6%88%AA%E6%96%AD%E7%9A%84%E5%8F%96%E8%88%8D"><span class="toc-text">3. 阈值 vs top-k 截断的取舍</span></a></li><li class="toc-item toc-level-3"><a class="toc-link" href="#4-%E5%A4%9A%E9%98%B6%E6%AE%B5-cascade"><span class="toc-text">4. 多阶段 cascade</span></a></li></ol></li><li class="toc-item toc-level-2"><a class="toc-link" href="#%E7%AC%AC%E5%9B%9B%E9%83%A8%E5%88%86-%E6%8E%A8%E7%90%86%E6%80%A7%E8%83%BD%E4%B8%8E%E9%83%A8%E7%BD%B2"><span class="toc-text">第四部分:推理性能与部署</span></a><ol class="toc-child"><li class="toc-item toc-level-3"><a class="toc-link" href="#1-CPU-%E5%8D%95%E6%9D%A1%E5%BB%B6%E8%BF%9F%E5%88%86%E5%B8%83"><span class="toc-text">1. CPU 单条延迟分布</span></a></li><li class="toc-item toc-level-3"><a class="toc-link" href="#2-Batch-%E5%8C%96%E5%8A%A0%E9%80%9F"><span class="toc-text">2. Batch 化加速</span></a></li><li class="toc-item toc-level-3"><a class="toc-link" href="#3-GPU-%E9%87%8F%E5%8C%96"><span class="toc-text">3. GPU &#x2F; 量化</span></a></li><li class="toc-item toc-level-3"><a class="toc-link" href="#4-%E8%92%B8%E9%A6%8F%E5%88%B0-bi-encoder"><span class="toc-text">4. 蒸馏到 bi-encoder</span></a></li></ol></li><li class="toc-item toc-level-2"><a class="toc-link" href="#%E7%AC%AC%E4%BA%94%E9%83%A8%E5%88%86-%E7%94%9F%E4%BA%A7%E7%9C%9F%E5%AE%9E%E5%81%9A%E6%B3%95-%E8%A7%84%E6%A8%A1-SLA-%E6%88%90%E6%9C%AC"><span class="toc-text">第五部分:生产真实做法 (规模 &#x2F; SLA &#x2F; 成本)</span></a><ol class="toc-child"><li class="toc-item toc-level-3"><a class="toc-link" href="#1-Cohere-Rerank-API"><span class="toc-text">1. Cohere Rerank API</span></a></li><li class="toc-item toc-level-3"><a class="toc-link" href="#2-Vespa-native-reranking"><span class="toc-text">2. Vespa native reranking</span></a></li><li class="toc-item toc-level-3"><a class="toc-link" href="#3-Pinecone-reranker"><span class="toc-text">3. Pinecone reranker</span></a></li><li class="toc-item toc-level-3"><a class="toc-link" href="#4-Search-Quality-Eval-%E5%B7%A5%E5%85%B7"><span class="toc-text">4. Search Quality Eval 工具</span></a></li><li class="toc-item toc-level-3"><a class="toc-link" href="#5-%E5%A4%9A%E6%A0%B7%E6%80%A7-MMR-%E8%B7%9F-rerank-%E7%9A%84%E5%85%B3%E7%B3%BB"><span class="toc-text">5. 多样性 (MMR) 跟 rerank 的关系</span></a></li></ol></li><li class="toc-item toc-level-2"><a class="toc-link" href="#%E7%AC%AC%E5%85%AD%E9%83%A8%E5%88%86-Reranker-%E9%9B%86%E6%88%90%E7%9A%84%E5%B8%B8%E8%A7%81%E8%AF%AF%E5%8C%BA"><span class="toc-text">第六部分:Reranker 集成的常见误区</span></a></li><li class="toc-item toc-level-2"><a class="toc-link" href="#%E7%AC%AC%E4%B8%83%E9%83%A8%E5%88%86-%E5%B0%8F%E5%9E%8B%E5%AE%9E%E7%8E%B0%E7%9A%84%E5%B8%B8%E8%A7%81%E5%9D%91-%E2%86%92-%E7%94%9F%E4%BA%A7%E5%AF%B9%E7%AD%96"><span class="toc-text">第七部分:小型实现的常见坑 → 生产对策</span></a><ol class="toc-child"><li class="toc-item toc-level-3"><a class="toc-link" href="#7-1-%E5%B8%B8%E8%A7%81%E5%9D%91"><span class="toc-text">7.1 常见坑</span></a><ol class="toc-child"><li class="toc-item toc-level-4"><a class="toc-link" href="#%E5%9D%91-1-%E5%8D%95-score-%E5%AD%97%E6%AE%B5%E5%8F%8C%E8%AF%AD%E4%B9%89-rerank-%E5%88%86%E8%A6%86%E7%9B%96%E7%B2%97%E6%8E%92%E5%88%86"><span class="toc-text">坑 1: 单 score 字段双语义 (rerank 分覆盖粗排分)</span></a></li><li class="toc-item toc-level-4"><a class="toc-link" href="#%E5%9D%91-2-sigmoid-0-0-5-%E5%B0%8F%E8%AF%AD%E6%96%99-%E4%BF%9D%E5%AE%88%E6%A8%A1%E5%9E%8B-%E2%86%92-%E7%BB%9D%E5%AF%B9%E9%98%88%E5%80%BC%E8%BF%87%E6%BB%A4%E5%BD%A2%E5%90%8C%E8%99%9A%E8%AE%BE"><span class="toc-text">坑 2: sigmoid(0) &#x3D; 0.5 + 小语料 + 保守模型 → 绝对阈值过滤形同虚设</span></a></li><li class="toc-item toc-level-4"><a class="toc-link" href="#%E5%9D%91-3-SystemExit-%E4%B8%8D%E7%BB%A7%E6%89%BF-Exception-%E2%86%92-%E8%B0%83%E7%94%A8%E6%96%B9%E5%AE%BD-catch-%E5%85%9C%E4%B8%8D%E4%BD%8F"><span class="toc-text">坑 3: SystemExit 不继承 Exception → 调用方宽 catch 兜不住</span></a></li></ol></li><li class="toc-item toc-level-3"><a class="toc-link" href="#7-2-%E7%94%9F%E4%BA%A7%E5%AF%B9%E7%AD%96-%E2%80%94-4-%E6%8B%9B%E5%BA%94%E5%AF%B9%E7%BB%9D%E5%AF%B9%E9%98%88%E5%80%BC%E5%A4%B1%E6%95%88"><span class="toc-text">7.2 生产对策 — 4 招应对绝对阈值失效</span></a><ol class="toc-child"><li class="toc-item toc-level-4"><a class="toc-link" href="#%E6%8B%9B-1-Platt-scaling-Isotonic-regression-%E5%81%9A%E5%88%86%E6%95%B0%E6%A0%A1%E5%87%86"><span class="toc-text">招 1: Platt scaling &#x2F; Isotonic regression 做分数校准</span></a></li><li class="toc-item toc-level-4"><a class="toc-link" href="#%E6%8B%9B-2-%E7%9B%B8%E5%AF%B9%E9%98%88%E5%80%BC-%E4%B8%8D%E5%8D%A1%E7%BB%9D%E5%AF%B9%E5%88%86"><span class="toc-text">招 2: 相对阈值 (不卡绝对分)</span></a></li><li class="toc-item toc-level-4"><a class="toc-link" href="#%E6%8B%9B-3-%E6%8A%8A%E2%80%9D%E6%8B%92%E7%AD%94%E2%80%9D%E4%BA%A4%E7%BB%99-LLM-%E5%85%9C%E5%BA%95%E9%98%B2%E7%BA%BF"><span class="toc-text">招 3: 把”拒答”交给 LLM (兜底防线)</span></a></li><li class="toc-item toc-level-4"><a class="toc-link" href="#%E6%8B%9B-4-LLM-as-reranker-%E6%9B%BF%E4%BB%A3-cross-encoder"><span class="toc-text">招 4: LLM-as-reranker (替代 cross-encoder)</span></a></li></ol></li><li class="toc-item toc-level-3"><a class="toc-link" href="#7-3-%E7%BB%BC%E5%90%88%E5%AF%B9%E7%85%A7%E8%A1%A8"><span class="toc-text">7.3 综合对照表</span></a></li></ol></li><li class="toc-item toc-level-2"><a class="toc-link" href="#%E7%AC%AC%E5%85%AB%E9%83%A8%E5%88%86-%E8%A1%A5%E9%BD%90%E8%B7%AF%E7%BA%BF-%E6%8C%89-ROI-%E6%8E%92%E5%BA%8F"><span class="toc-text">第八部分:补齐路线 (按 ROI 排序)</span></a></li><li class="toc-item toc-level-2"><a class="toc-link" href="#%E9%99%84%E5%BD%95-A-%E6%9C%AF%E8%AF%AD%E5%B0%8F%E8%AF%8D%E5%85%B8"><span class="toc-text">附录 A:术语小词典</span></a></li><li class="toc-item toc-level-2"><a class="toc-link" href="#%E9%99%84%E5%BD%95-B-%E8%BF%9B%E4%B8%80%E6%AD%A5%E9%98%85%E8%AF%BB"><span class="toc-text">附录 B:进一步阅读</span></a></li><li class="toc-item toc-level-2"><a class="toc-link" href="#%E5%86%99%E5%9C%A8%E6%9C%80%E5%90%8E"><span class="toc-text">写在最后</span></a></li></ol></li></ol></div><div class="widget-footer"><a class="top" onclick="util.scrollTop()"><svg xmlns="http://www.w3.org/2000/svg" width="32" height="32" viewBox="0 0 24 24"><!-- Icon from Solar by 480 Design - https://creativecommons.org/licenses/by/4.0/ --><g fill="none" stroke="currentColor" stroke-linecap="round" stroke-width="1.5"><path stroke-linejoin="round" d="m9 15.5l3-3l3 3m-6-4l3-3l3 3"/><path d="M7 3.338A9.95 9.95 0 0 1 12 2c5.523 0 10 4.477 10 10s-4.477 10-10 10S2 17.523 2 12c0-1.821.487-3.53 1.338-5"/></g></svg><span>回到顶部</span></a></div></widget>
+</div></aside><div class='float-panel'>
+  <button type='button' style='display:none' class='laptop-only rightbar-toggle mobile' onclick='sidebar.rightbar()'>
+    <svg xmlns="http://www.w3.org/2000/svg" width="32" height="32" viewBox="0 0 24 24"><path fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10 6h11m-11 6h11m-11 6h11M4 6h1v4m-1 0h2m0 8H4c0-1 2-2 2-3s-1-1.5-2-1"/></svg>
+  </button>
+  <button type='button' style='display:none' class='mobile-only leftbar-toggle mobile' onclick='sidebar.leftbar()'>
+    <svg xmlns="http://www.w3.org/2000/svg" width="32" height="32" viewBox="0 0 24 24"><g fill="none" stroke="currentColor" stroke-width="1.5"><path d="M2 11c0-3.771 0-5.657 1.172-6.828C4.343 3 6.229 3 10 3h4c3.771 0 5.657 0 6.828 1.172C22 5.343 22 7.229 22 11v2c0 3.771 0 5.657-1.172 6.828C19.657 21 17.771 21 14 21h-4c-3.771 0-5.657 0-6.828-1.172C2 18.657 2 16.771 2 13z"/><path id="sep" stroke-linecap="round" d="M5.5 10h6m-5 4h4m4.5 7V3"/></g></svg>
+  </button>
+</div>
+</div><div class="scripts">
+
+
+<script type="text/javascript">
+  window.canonical = {"originalHost":null,"officialHosts":["localhost"],"encoded":""};
+  const ctx = {
+    date_suffix: {
+      just: `刚刚`,
+      min: `分钟前`,
+      hour: `小时前`,
+      day: `天前`,
+    },
+    root : `/`,
+    tag_plugins: {
+      chat: Object.assign({"api":"https://siteinfo.listentothewind.cn/api/v1"}),
+    }
+  };
+
+  // required plugins (only load if needs)
+  if (`local_search`) {
+    ctx.search = {};
+    ctx.search.service = `local_search`;
+    if (ctx.search.service == 'local_search') {
+      let service_obj = Object.assign({}, `{"field":"all","path":"/search.json","content":true,"skip_search":null,"sort":"-date"}`);
+      ctx.search[ctx.search.service] = service_obj;
+    }
+  }
+  const def = {
+    avatar: `https://gcore.jsdelivr.net/gh/cdn-x/placeholder@1.0.12/avatar/round/3442075.svg`,
+    cover: `https://gcore.jsdelivr.net/gh/cdn-x/placeholder@1.0.12/cover/76b86c0226ffd.svg`,
+    loading: `https://api.iconify.design/eos-icons:three-dots-loading.svg?color=%231cd0fd`,
+  };
+  const deps = {
+    jquery: `https://gcore.jsdelivr.net/npm/jquery@3.7/dist/jquery.min.js`,
+    marked: `https://gcore.jsdelivr.net/npm/marked@13.0/lib/marked.umd.min.js`,
+    lazyload: `/%5Bobject%20Object%5D`
+  }
+  
+
+</script>
+
+<script type="text/javascript">
+  
+  function RunItem() {
+    this.list = []; // 存放回调函数
+    this.start = () => {
+      for (var i = 0; i < this.list.length; i++) {
+        this.list[i].run();
+      }
+    };
+    this.push = (fn, name, setRequestAnimationFrame = true) => {
+      let myfn = fn
+      if (setRequestAnimationFrame) {
+        myfn = () => {
+          utils.requestAnimationFrame(fn)
+        }
+      }
+      var f = new Item(myfn, name);
+      this.list.push(f);
+    };
+    this.remove = (name) => {
+      for (let index = 0; index < this.list.length; index++) {
+        const e = this.list[index];
+        if (e.name == name) {
+          this.list.splice(index, 1);
+        }
+      }
+    }
+    // 构造一个可以run的对象
+    function Item(fn, name) {
+      // 函数名称
+      this.name = name || fn.name;
+      // run方法
+      this.run = () => {
+        try {
+          fn()
+        } catch (error) {
+          console.log(error);
+        }
+      };
+    }
+  }
+
+  const utils = {
+    // 懒加载 css https://github.com/filamentgroup/loadCSS
+    css: (href, before, media, attributes) => {
+      var doc = window.document;
+      var ss = doc.createElement("link");
+      var ref;
+      if (before) {
+        ref = before;
+      } else {
+        var refs = (doc.body || doc.getElementsByTagName("head")[0]).childNodes;
+        ref = refs[refs.length - 1];
+      }
+      var sheets = doc.styleSheets;
+      if (attributes) {
+        for (var attributeName in attributes) {
+          if (attributes.hasOwnProperty(attributeName)) {
+            ss.setAttribute(attributeName, attributes[attributeName]);
+          }
+        }
+      }
+      ss.rel = "stylesheet";
+      ss.href = href;
+      ss.media = "only x";
+      function ready(cb) {
+        if (doc.body) {
+          return cb();
+        }
+        setTimeout(function () {
+          ready(cb);
+        });
+      }
+      ready(function () {
+        ref.parentNode.insertBefore(ss, before ? ref : ref.nextSibling);
+      });
+      var onloadcssdefined = function (cb) {
+        var resolvedHref = ss.href;
+        var i = sheets.length;
+        while (i--) {
+          if (sheets[i].href === resolvedHref) {
+            return cb();
+          }
+        }
+        setTimeout(function () {
+          onloadcssdefined(cb);
+        });
+      };
+      function loadCB() {
+        if (ss.addEventListener) {
+          ss.removeEventListener("load", loadCB);
+        }
+        ss.media = media || "all";
+      }
+      if (ss.addEventListener) {
+        ss.addEventListener("load", loadCB);
+      }
+      ss.onloadcssdefined = onloadcssdefined;
+      onloadcssdefined(loadCB);
+      return ss;
+    },
+
+    js: (src, opt) => new Promise((resolve, reject) => {
+      var script = document.createElement('script');
+      if (src.startsWith('/')) {
+        src = ctx.root + src.substring(1);
+      }
+      script.src = src;
+      if (opt) {
+        for (let key of Object.keys(opt)) {
+          script[key] = opt[key]
+        }
+      } else {
+        // 默认异步，如果需要同步，第二个参数传入 {} 即可
+        script.async = true
+      }
+      script.onerror = reject
+      script.onload = script.onreadystatechange = function () {
+        const loadState = this.readyState
+        if (loadState && loadState !== 'loaded' && loadState !== 'complete') return
+        script.onload = script.onreadystatechange = null
+        resolve()
+      }
+      document.head.appendChild(script)
+    }),
+
+    jq: (fn) => {
+      if (typeof jQuery === 'undefined') {
+        utils.js(deps.jquery).then(fn)
+      } else {
+        fn()
+      }
+    },
+
+    onLoading: (el) => {
+      if (el) {
+        $(el).append('<div class="loading-wrap"><svg xmlns="http://www.w3.org/2000/svg" width="2em" height="2em" preserveAspectRatio="xMidYMid meet" viewBox="0 0 24 24"><g fill="none" stroke="currentColor" stroke-linecap="round" stroke-width="2"><path stroke-dasharray="60" stroke-dashoffset="60" stroke-opacity=".3" d="M12 3C16.9706 3 21 7.02944 21 12C21 16.9706 16.9706 21 12 21C7.02944 21 3 16.9706 3 12C3 7.02944 7.02944 3 12 3Z"><animate fill="freeze" attributeName="stroke-dashoffset" dur="1.3s" values="60;0"/></path><path stroke-dasharray="15" stroke-dashoffset="15" d="M12 3C16.9706 3 21 7.02944 21 12"><animate fill="freeze" attributeName="stroke-dashoffset" dur="0.3s" values="15;0"/><animateTransform attributeName="transform" dur="1.5s" repeatCount="indefinite" type="rotate" values="0 12 12;360 12 12"/></path></g></svg></div>');
+      }
+    },
+    onLoadSuccess: (el) => {
+      if (el) {
+        $(el).find('.loading-wrap').remove();
+      }
+    },
+    onLoadFailure: (el) => {
+      if (el) {
+        $(el).find('.loading-wrap svg').remove();
+        $(el).find('.loading-wrap').append('<svg xmlns="http://www.w3.org/2000/svg" width="2em" height="2em" preserveAspectRatio="xMidYMid meet" viewBox="0 0 24 24"><g fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="2"><path stroke-dasharray="60" stroke-dashoffset="60" d="M12 3L21 20H3L12 3Z"><animate fill="freeze" attributeName="stroke-dashoffset" dur="0.5s" values="60;0"/></path><path stroke-dasharray="6" stroke-dashoffset="6" d="M12 10V14"><animate fill="freeze" attributeName="stroke-dashoffset" begin="0.6s" dur="0.2s" values="6;0"/></path></g><circle cx="12" cy="17" r="1" fill="currentColor" fill-opacity="0"><animate fill="freeze" attributeName="fill-opacity" begin="0.8s" dur="0.4s" values="0;1"/></circle></svg>');
+        $(el).find('.loading-wrap').addClass('error');
+      }
+    },
+    request: (el, url, callback, onFailure) => {
+      const maxRetry = 3;
+      let retryCount = 0;
+
+      return new Promise((resolve, reject) => {
+        const load = () => {
+          utils.onLoading?.(el);
+
+          let timedOut = false;
+          const timeout = setTimeout(() => {
+            timedOut = true;
+            console.warn('[request] 超时:', url);
+
+            if (++retryCount >= maxRetry) {
+              utils.onLoadFailure?.(el);
+              onFailure?.();
+              reject('请求超时');
+            } else {
+              setTimeout(load, 1000);
+            }
+          }, 5000);
+
+          fetch(url).then(resp => {
+            if (timedOut) return;
+            clearTimeout(timeout);
+
+            if (!resp.ok) throw new Error('响应失败');
+            return resp;
+          }).then(data => {
+            if (timedOut) return;
+            utils.onLoadSuccess?.(el);
+            callback(data);
+            resolve(data);
+          }).catch(err => {
+            clearTimeout(timeout);
+            console.warn('[request] 错误:', err);
+
+            if (++retryCount >= maxRetry) {
+              utils.onLoadFailure?.(el);
+              onFailure?.();
+              reject(err);
+            } else {
+              setTimeout(load, 1000);
+            }
+          });
+        };
+
+        load();
+      });
+    },
+    requestWithoutLoading: (url, options = {}, maxRetry = 2, timeout = 5000) => {
+      return new Promise((resolve, reject) => {
+        let retryCount = 0;
+
+        const tryRequest = () => {
+          let timedOut = false;
+          const timer = setTimeout(() => {
+            timedOut = true;
+            if (++retryCount > maxRetry) reject('timeout');
+            else tryRequest();
+          }, timeout);
+
+          fetch(url, options)
+            .then(resp => {
+              clearTimeout(timer);
+              if (!resp.ok) throw new Error('bad response');
+              resolve(resp);
+            })
+            .catch(err => {
+              clearTimeout(timer);
+              if (++retryCount > maxRetry) reject(err);
+              else setTimeout(tryRequest, 500);
+            });
+        };
+
+        tryRequest();
+      });
+    },
+    /********************** requestAnimationFrame ********************************/
+    // 1、requestAnimationFrame 会把每一帧中的所有 DOM 操作集中起来，在一次重绘或回流中就完成，并且重绘或回流的时间间隔紧紧跟随浏览器的刷新频率，一般来说，这个频率为每秒60帧。
+    // 2、在隐藏或不可见的元素中，requestAnimationFrame 将不会进行重绘或回流，这当然就意味着更少的的 cpu，gpu 和内存使用量。
+    requestAnimationFrame: (fn) => {
+      if (!window.requestAnimationFrame) {
+        window.requestAnimationFrame = window.requestAnimationFrame || window.mozRequestAnimationFrame || window.webkitRequestAnimationFrame;
+      }
+      window.requestAnimationFrame(fn)
+    },
+    dark: {},
+  };
+
+  // utils.dark.mode 当前模式 dark or light
+  // utils.dark.toggle() 暗黑模式触发器
+  // utils.dark.push(callBack[,"callBackName"]) 传入触发器回调函数
+  utils.dark.method = {
+    toggle: new RunItem(),
+  };
+  utils.dark = Object.assign(utils.dark, {
+    push: utils.dark.method.toggle.push,
+  });
+</script>
+<script>
+  const sidebar = {
+    leftbar: () => {
+      if (l_body) {
+        l_body.toggleAttribute('leftbar');
+        l_body.removeAttribute('rightbar');
+      }
+    },
+    rightbar: () => {
+      if (l_body) {
+        l_body.toggleAttribute('rightbar');
+        l_body.removeAttribute('leftbar');
+      }
+    },
+    dismiss: () => {
+      if (l_body) {
+        l_body.removeAttribute('leftbar');
+        l_body.removeAttribute('rightbar');
+      }
+    },
+    toggleTOC: () => {
+      document.querySelector('#data-toc').classList.toggle('collapse');
+    }
+  }
+</script>
+<script type="text/javascript">
+  (() => {
+    const tagSwitchers = document.querySelectorAll('.tag-subtree.parent-tag > a > .tag-switcher-wrapper')
+    for (const tagSwitcher of tagSwitchers) {
+      tagSwitcher.addEventListener('click', (e) => {
+        const parent = e.target.closest('.tag-subtree.parent-tag')
+        parent.classList.toggle('expanded')
+        e.preventDefault()
+      })
+    }
+
+    // Get active tag from query string, then activate it.
+    const urlParams = new URLSearchParams(window.location.search)
+    const activeTag = urlParams.get('tag')
+    if (activeTag) {
+      let tag = document.querySelector(`.tag-subtree[data-tag="${activeTag}"]`)
+      if (tag) {
+        tag.querySelector('a').classList.add('active')
+        
+        while (tag) {
+          tag.classList.add('expanded')
+          tag = tag.parentElement.closest('.tag-subtree.parent-tag')
+        }
+      }
+    }
+  })()
+</script>
+
+<script async src="https://gcore.jsdelivr.net/npm/vanilla-lazyload@19.1/dist/lazyload.min.js"></script>
+<script>
+  // https://www.npmjs.com/package/vanilla-lazyload
+  // Set the options globally
+  // to make LazyLoad self-initialize
+  window.lazyLoadOptions = {
+    elements_selector: ".lazy",
+    callback_loaded: (el) => {
+      el.classList.add('loaded');
+      const wrapper = el.closest('.lazy-box');
+      const icon = wrapper?.querySelector('.lazy-icon');
+      if (icon) icon.remove();
+    }
+  };
+  // Listen to the initialization event
+  // and get the instance of LazyLoad
+  window.addEventListener(
+    "LazyLoad::Initialized",
+    function (event) {
+      window.lazyLoadInstance = event.detail.instance;
+    },
+    false
+  );
+  document.addEventListener('DOMContentLoaded', function () {
+    window.lazyLoadInstance?.update();
+  });
+
+  window.wrapLazyloadImages = (container) => {
+    if (typeof container === 'string') {
+      container = document.querySelector(container);
+    }
+    if (!container) return;
+    
+    const images = container.querySelectorAll('img');
+    images.forEach((img) => {
+      if (img.classList.contains('lazy')) return;
+
+      const src = img.getAttribute('src');
+      if (!src) return;
+
+      const wrapper = document.createElement('div');
+      wrapper.className = 'lazy-box';
+
+      const newImg = img.cloneNode();
+      newImg.removeAttribute('src');
+      newImg.setAttribute('data-src', src);
+      newImg.classList.add('lazy');
+
+      const icon = document.createElement('div');
+      icon.className = 'lazy-icon';
+      if (def.loading) {
+        icon.style.backgroundImage = `url("${def.loading}")`;
+      }
+
+      wrapper.appendChild(newImg);
+      wrapper.appendChild(icon);
+
+      img.replaceWith(wrapper);
+    });
+
+    // 通知 LazyLoad 更新
+    if (window.lazyLoadInstance?.update) {
+      window.lazyLoadInstance.update();
+    }
+  }
+  
+</script>
+
+<!-- required -->
+<script src="/js/main.js?v=1.33.1" defer></script>
+
+<script type="text/javascript">
+  const applyTheme = (theme) => {
+    if (theme === 'auto') {
+      document.documentElement.removeAttribute('data-theme')
+    } else {
+      document.documentElement.setAttribute('data-theme', theme)
+    }
+
+    // applyThemeToGiscus(theme)
+  }
+
+  // FIXME: 这会导致无法使用 preferred_color_scheme 以外的主题
+  const applyThemeToGiscus = (theme) => {
+    // theme = theme === 'auto' ? 'preferred_color_scheme' : theme
+    const cmt = document.getElementById('giscus')
+    if (cmt) {
+      // This works before giscus load.
+      cmt.setAttribute('data-theme', theme)
+    }
+
+    const iframe = document.querySelector('#comments > section.giscus > iframe')
+    if (iframe) {
+      // This works after giscus loaded.
+      const src = iframe.src
+      const newSrc = src.replace(/theme=[\w]+/, `theme=${theme}`)
+      iframe.src = newSrc
+    }
+  }
+
+  const switchTheme = () => {
+    // light -> dark -> auto -> light -> ...
+    const currentTheme = document.documentElement.getAttribute('data-theme')
+    let newTheme;
+    switch (currentTheme) {
+      case 'light':
+        newTheme = 'dark'
+        break
+      case 'dark':
+        newTheme = 'auto'
+        break
+      default:
+        newTheme = 'light'
+    }
+    applyTheme(newTheme)
+    window.localStorage.setItem('Stellar.theme', newTheme)
+    utils.dark.mode = newTheme === 'auto' ? (window.matchMedia("(prefers-color-scheme: dark)").matches ? "dark" : "light") : newTheme;
+    utils.dark.method.toggle.start();
+
+    const messages = {
+      light: `切换到浅色模式`,
+      dark: `切换到深色模式`,
+      auto: `切换到跟随系统配色`,
+    }
+    hud?.toast?.(messages[newTheme])
+  }
+
+  (() => {
+    // Apply user's preferred theme, if any.
+    const theme = window.localStorage.getItem('Stellar.theme')
+    if (theme !== null) {
+      applyTheme(theme)
+    } else {
+      utils.dark.mode = window.matchMedia("(prefers-color-scheme: dark)").matches ? "dark" : "light";
+    }
+    utils.dark.method.toggle.start();
+  })()
+</script>
+
+
+<!-- optional -->
+
+
+
+<script defer>
+  window.addEventListener('DOMContentLoaded', (event) => {
+    ctx.services = Object.assign({}, JSON.parse(`{"mdrender":{"js":"/js/services/mdrender.js"},"siteinfo":{"js":"/js/services/siteinfo.js","api":null},"ghinfo":{"js":"/js/services/ghinfo.js"},"rating":{"js":"/js/services/rating.js","api":"https://star-vote.xaox.cc/api/rating"},"vote":{"js":"/js/services/vote.js","api":"https://star-vote.xaox.cc/api/vote"},"sites":{"js":"/js/services/sites.js"},"friends":{"js":"/js/services/friends.js"},"friends_and_posts":{"js":"/js/services/friends_and_posts.js"},"timeline":{"js":"/js/services/timeline.js"},"fcircle":{"js":"/js/services/fcircle.js"},"weibo":{"js":"/js/services/weibo.js"},"memos":{"js":"/js/services/memos.js"},"voice":{"js":"/js/plugins/voice.js"},"video":{"js":"/js/plugins/video.js"},"download-file":{"js":"/js/plugins/download-file.js"},"twikoo":{"js":"/js/services/twikoo_latest_comment.js"},"waline":{"js":"/js/services/waline_latest_comment.js"},"artalk":{"js":"/js/services/artalk_latest_comment.js"},"giscus":{"js":"/js/services/giscus_latest_comment.js"},"contributors":{"edit_this_page":{"_posts/":null,"wiki/stellar/":"https://github.com/xaoxuu/hexo-theme-stellar-docs/blob/main/"},"js":"/js/services/contributors.js"}}`));
+    for (let id of Object.keys(ctx.services)) {
+      const js = ctx.services[id].js;
+      if (id == 'siteinfo') {
+        ctx.cardlinks = document.querySelectorAll('a.link-card[cardlink]');
+        if (ctx.cardlinks?.length > 0) {
+          utils.js(js, { defer: true }).then(function () {
+            setCardLink(ctx.cardlinks);
+          });
+        }
+      } else if (id == 'voice') {
+        ctx.voiceAudios = document.querySelectorAll('.voice>audio');
+        if (ctx.voiceAudios?.length > 0) {
+          utils.js(js, { defer: true }).then(function () {
+            createVoiceDom(ctx.voiceAudios);
+          });
+        }
+      } else if (id == 'video') {
+        ctx.videos = document.querySelectorAll('.video>video');
+        if (ctx.videos?.length > 0) {
+          utils.js(js, { defer: true }).then(function () {
+            videoEvents(ctx.videos);
+          });
+        }
+      } else if (id == 'download-file') {
+        ctx.files = document.querySelectorAll('.file');
+        if (ctx.files?.length > 0) {
+          utils.js(js, { defer: true }).then(function () {
+            downloadFileEvent(ctx.files);
+          });
+        }
+      } else {
+        const els = document.getElementsByClassName(`ds-${id}`);
+        if (els?.length > 0) {
+          utils.jq(() => {
+            if (id == 'timeline' || 'memos' || 'marked') {
+              utils.js(deps.marked).then(function () {
+                utils.js(js, { defer: true });
+              });
+            } else {
+              utils.js(js, { defer: true });
+            }
+          });
+        }
+      }
+    }
+
+    // chat iphone time
+    let phoneTimes = document.querySelectorAll('.chat .status-bar .time');
+
+    if (phoneTimes.length > 0) {
+      NowTime();
+      var date = new Date();
+      var sec = date.getSeconds();
+      var firstAdjustInterval = setInterval(firstAdjustTime, 1000 * (60 - sec));
+    }
+
+    function firstAdjustTime() {
+      NowTime();
+      clearInterval(firstAdjustInterval);
+      setInterval(NowTime, 1000 * 60);
+    }
+
+    function NowTime() {
+      for (let i = 0; i < phoneTimes.length; ++i) {
+        var timeSpan = phoneTimes[i];
+        var date = new Date();
+        var hour = date.getHours();
+        var min = date.getMinutes();
+        timeSpan.innerHTML = check(hour) + ":" + check(min);
+      }
+    };
+
+    function check(val) {
+      if (val < 10) {
+        return ("0" + val);
+      }
+      return (val);
+    }
+
+    // chat quote
+    const chat_quote_obverser = new IntersectionObserver((entries, observer) => {
+      entries.filter((entry) => { return entry.isIntersecting }).sort((a, b) => a.intersectionRect.y !== b.intersectionRect.y ? a.intersectionRect.y - b.intersectionRect.y : a.intersectionRect.x - b.intersectionRect.x).forEach((entry, index) => {
+          observer.unobserve(entry.target);
+          setTimeout(() => {
+            entry.target.classList.add('quote-blink');
+            setTimeout(() => {
+              entry.target.classList.remove('quote-blink');
+            }, 1000);
+          }, Math.max(100, 16) * (index + 1));
+        });
+    });
+
+    var chatQuotes = document.querySelectorAll(".chat .talk .quote");
+    chatQuotes.forEach((quote) => {
+      quote.addEventListener('click', function () {
+        var chatCellDom = document.getElementById("quote-" + quote.getAttribute("quotedCellTag"));
+        if (chatCellDom) {
+          var chatDiv = chatCellDom.parentElement;
+          var mid = chatDiv.clientHeight / 2;
+          var offsetTop = chatCellDom.offsetTop;
+          if (offsetTop > mid - chatCellDom.clientHeight / 2) {
+            chatDiv.scrollTo({
+              top: chatCellDom.offsetTop - mid + chatCellDom.clientHeight / 2,
+              behavior: "smooth"
+            });
+          } else {
+            chatDiv.scrollTo({
+              top: 0,
+              behavior: "smooth"
+            });
+          }
+          chat_quote_obverser.observe(chatCellDom);
+        }
+      });
+    });
+  });
+</script>
+
+<script>
+  window.addEventListener('DOMContentLoaded', (event) => {
+    ctx.search = {
+      path: `/search.json`,
+    }
+    utils.js('/js/search/local-search.js', { defer: true });
+  });
+</script><script>
+  window.FPConfig = {
+    delay: 0,
+    ignoreKeywords: [],
+    maxRPS: 5,
+    hoverDelay: 25
+  };
+</script>
+<script defer src="https://gcore.jsdelivr.net/npm/flying-pages@2/flying-pages.min.js"></script><script>
+  ctx.fancybox = {
+    selector: `.timenode p>img`,
+    css: `https://gcore.jsdelivr.net/npm/@fancyapps/ui@5.0/dist/fancybox/fancybox.css`,
+    js: `https://gcore.jsdelivr.net/npm/@fancyapps/ui@5.0/dist/fancybox/fancybox.umd.js`
+  };
+  var selector = '[data-fancybox]:not(.error), .with-fancybox .atk-content img:not([atk-emoticon])';
+  if (ctx.fancybox.selector) {
+    selector += `, ${ctx.fancybox.selector}`
+  }
+  var needFancybox = document.querySelectorAll(selector).length !== 0;
+  if (!needFancybox) {
+    const memos = document.getElementsByClassName('ds-memos');
+    if (memos != undefined && memos.length > 0) {
+      needFancybox = true;
+    }
+    const fancybox = document.getElementsByClassName('with-fancybox');
+    if (fancybox != undefined && fancybox.length > 0) {
+      needFancybox = true;
+    }
+  }
+  if (needFancybox) {
+    utils.css(ctx.fancybox.css);
+    utils.js(ctx.fancybox.js, { defer: true }).then(function () {
+      Fancybox.bind(selector, {
+        hideScrollbar: false,
+        Thumbs: {
+          autoStart: false,
+        },
+        caption: (fancybox, slide) => {
+          return slide.triggerEl.alt || slide.triggerEl.dataset.caption || null
+        }
+      });
+    })
+  }
+</script>
+<script>
+  window.addEventListener('DOMContentLoaded', (event) => {
+    const swiper_api = document.getElementById('swiper-api');
+    if (swiper_api != undefined) {
+      utils.css(`https://unpkg.com/swiper@10.3/swiper-bundle.min.css`);
+      utils.js(`https://unpkg.com/swiper@10.3/swiper-bundle.min.js`, { defer: true }).then(function () {
+        const effect = swiper_api.getAttribute('effect') || '';
+        var swiper = new Swiper('.swiper#swiper-api', {
+          slidesPerView: 'auto',
+          spaceBetween: 8,
+          centeredSlides: true,
+          effect: effect,
+          rewind: true,
+          pagination: {
+            el: '.swiper-pagination',
+            clickable: true,
+          },
+          navigation: {
+            nextEl: '.swiper-button-next',
+            prevEl: '.swiper-button-prev',
+          },
+        });
+      })
+    }
+  });
+</script>
+<script>
+  document.addEventListener('DOMContentLoaded', function () {
+    window.codeElements = document.querySelectorAll('.code');
+    if (window.codeElements.length > 0) {
+      ctx.copycode = {
+        default_text: `Copy`,
+        success_text: `Copied`,
+        toast: `复制成功`,
+      };
+      utils.js('/js/plugins/copycode.js');
+    }
+  });
+</script>
+
+
+<!-- inject -->
+
+</div></body></html>
